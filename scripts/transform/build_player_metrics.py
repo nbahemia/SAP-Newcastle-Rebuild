@@ -154,15 +154,115 @@ def build_defensive_events(events):
 # --------------------------------------------------
 # Run transformations
 # --------------------------------------------------
+
 passes = build_passing_events(events)
 
 carries = build_carry_events(events)
 
 pressures, recoveries, interceptions, duels = build_defensive_events(events)
 
-print(f"Passes: {len(passes):,}")
-print(f"Carries: {len(carries):,}")
-print(f"Pressures: {len(pressures):,}")
-print(f"Recoveries: {len(recoveries):,}")
-print(f"Interceptions: {len(interceptions):,}")
-print(f"Duels: {len(duels):,}")
+#--------------------------------------------------
+# Build player match metrics
+#--------------------------------------------------
+
+passing_metrics = (
+    passes
+    .groupby(["match_id", "team", "player"])
+    .agg(
+        successful_passes=("successful", "sum"),
+        progressive_passes=("progressive", "sum"),
+        passes_into_final_third=("pass_into_final_third", "sum"),
+    )
+    .reset_index()
+)
+
+carrying_metrics = (
+    carries
+    .groupby(["match_id", "team", "player"])
+    .agg(
+        progressive_carries=("progressive", "sum"),
+        carries_into_final_third=("carry_into_final_third", "sum"),
+    )
+    .reset_index()
+)
+
+pressure_metrics = (
+    pressures
+    .groupby(["match_id", "team", "player"])
+    .agg(
+        pressures=("type", "size"),
+        attacking_third_pressures=("attacking_third_pressure", "sum"),
+    )
+    .reset_index()
+)
+
+recovery_metrics = (
+    recoveries
+    .groupby(["match_id", "team", "player"])
+    .agg(
+        recoveries=("type", "size"),
+        attacking_third_recoveries=("attacking_third_recovery", "sum"),
+    )
+    .reset_index()
+)
+
+interception_metrics = (
+    interceptions
+    .groupby(["match_id", "team", "player"])
+    .size()
+    .reset_index(name="interceptions")
+)
+
+duel_metrics = (
+    duels
+    .groupby(["match_id", "team", "player"])
+    .size()
+    .reset_index(name="duels")
+)
+
+player_match_metrics = passing_metrics.copy()
+
+for df in [
+    carrying_metrics,
+    pressure_metrics,
+    recovery_metrics,
+    interception_metrics,
+    duel_metrics,
+]:
+    player_match_metrics = player_match_metrics.merge(
+        df,
+        on=["match_id", "team", "player"],
+        how="outer"
+    )
+    
+metric_columns = [
+    "successful_passes",
+    "progressive_passes",
+    "passes_into_final_third",
+    "progressive_carries",
+    "carries_into_final_third",
+    "pressures",
+    "attacking_third_pressures",
+    "recoveries",
+    "attacking_third_recoveries",
+    "interceptions",
+    "duels",
+]
+
+player_match_metrics[metric_columns] = (
+    player_match_metrics[metric_columns]
+    .fillna(0)
+)
+    
+# --------------------------------------------------
+# Save player match metrics
+# --------------------------------------------------
+
+player_match_metrics.to_parquet(
+    PROCESSED_DATA_DIR / "player_match_metrics_raw.parquet",
+    index=False
+)
+
+print(
+    f"Saved {len(player_match_metrics):,} player-match rows"
+)

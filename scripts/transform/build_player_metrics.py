@@ -80,7 +80,7 @@ def build_passing_events(events):
     
     # Progressive passes 
     # Passes that move the ball forward at least 20 yards in own half or 10 yards in opposition half
-    passes["progressive"] = (
+    passes["progressive_pass"] = (
         passes["successful"] & passes["end_x"].gt(passes["start_x"]) & (
             ((passes["start_x"] < 60) & (passes["distance_progressed"] >= 20)) |
             ((passes["start_x"] >= 60) & (passes["distance_progressed"] >= 10))
@@ -88,7 +88,7 @@ def build_passing_events(events):
     )
     
     # Passes into final third
-    passes["into_final_third"] = (
+    passes["pass_into_final_third"] = (
         passes["successful"] & passes["end_x"].gt(passes["start_x"]) &
         passes["start_x"].lt(80) & passes["end_x"].ge(80)
     )
@@ -170,7 +170,7 @@ passing_metrics = (
     .groupby(["match_id", "team", "player"])
     .agg(
         successful_passes=("successful", "sum"),
-        progressive_passes=("progressive", "sum"),
+        progressive_passes=("progressive_pass", "sum"),
         passes_into_final_third=("pass_into_final_third", "sum"),
     )
     .reset_index()
@@ -180,7 +180,7 @@ carrying_metrics = (
     carries
     .groupby(["match_id", "team", "player"])
     .agg(
-        progressive_carries=("progressive", "sum"),
+        progressive_carries=("progressive_carry", "sum"),
         carries_into_final_third=("carry_into_final_third", "sum"),
     )
     .reset_index()

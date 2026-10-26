@@ -38,10 +38,41 @@ def extract_events(matches):
     
     print(f"Saved {len(events_df)} events")
     
+def extract_lineups(matches):
+    all_lineups = []
+
+    for match_id in matches["match_id"]:
+        print(f"Extracting lineups for match {match_id}")
+
+        match_lineups = sb.lineups(match_id=match_id)
+
+        for team, lineup in match_lineups.items():
+            lineup = lineup.copy()
+
+            lineup["match_id"] = match_id
+            lineup["team"] = team
+
+            all_lineups.append(lineup)
+
+    lineups_df = pd.concat(
+        all_lineups,
+        ignore_index=True
+    )
+
+    lineups_df.to_parquet(
+        RAW_DATA_DIR / "lineups.parquet",
+        index=False
+    )
+
+    print(f"Saved {len(lineups_df):,} lineup rows")
+
+    return lineups_df
 
 def main():
     matches = extract_matches()
+
     extract_events(matches)
+    extract_lineups(matches)
     
 if __name__ == "__main__":
     main()

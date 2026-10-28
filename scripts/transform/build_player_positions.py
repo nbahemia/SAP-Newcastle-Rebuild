@@ -14,6 +14,8 @@ RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
 MIN_SECONDARY_SHARE = 10.0
+
+
 # --------------------------------------------------
 # Load data
 # --------------------------------------------------
@@ -26,11 +28,16 @@ events = pd.read_parquet(
     RAW_DATA_DIR / "events.parquet"
 )
 
+player_minutes = pd.read_parquet(
+    PROCESSED_DATA_DIR / "player_minutes.parquet"
+)
+
 player_season = pd.read_parquet(
     PROCESSED_DATA_DIR / "player_season_metrics.parquet"
 )
 
 print(f"Loaded {len(lineups):,} lineup rows")
+print(f"Loaded {len(player_minutes):,} player-minute rows")
 print(f"Loaded {len(player_season):,} player-season rows")
 
 
@@ -39,6 +46,7 @@ print(f"Loaded {len(player_season):,} player-season rows")
 # --------------------------------------------------
 
 def normalize_positions(positions):
+
     if isinstance(positions, np.ndarray):
         return positions.tolist()
 
@@ -49,16 +57,20 @@ def normalize_positions(positions):
 
 
 def timestamp_to_seconds(timestamp):
+
     if timestamp is None or pd.isna(timestamp):
         return None
 
     minutes, seconds = timestamp.split(":")
 
-    return int(minutes) * 60 + int(seconds)
+    return (
+        int(minutes) * 60
+        + int(seconds)
+    )
 
 
 # --------------------------------------------------
-# Determine standardized match duration
+# Match duration
 # --------------------------------------------------
 
 match_max_period = (
@@ -70,6 +82,7 @@ match_max_period = (
 
 
 def get_match_duration(match_id):
+
     max_period = match_max_period[match_id]
 
     if max_period <= 2:
@@ -79,7 +92,7 @@ def get_match_duration(match_id):
 
 
 # --------------------------------------------------
-# Map StatsBomb positions into broader groups
+# Position mapping
 # --------------------------------------------------
 
 def position_group(position):
@@ -139,10 +152,28 @@ def position_group(position):
 
 
 # --------------------------------------------------
-# Calculate minutes spent in each position
+# Player match-minute lookup
 # --------------------------------------------------
 
-position_rows = []
+minute_lookup = (
+    player_minutes
+    .set_index(
+        [
+            "match_id",
+            "team",
+            "player",
+        ]
+    )
+    ["minutes"]
+    .to_dict()
+)
+
+
+# --------------------------------------------------
+# Build raw position intervals
+# --------------------------------------------------
+
+interval_rows = []
 
 for _, row in lineups.iterrows():
 
@@ -150,11 +181,24 @@ for _, row in lineups.iterrows():
     team = row["team"]
     player = row["player_name"]
 
+    key = (
+        match_id,
+        team,
+        player,
+    )
+
+    if key not in minute_lookup:
+        continue
+
+    total_player_minutes = minute_lookup[key]
+
+    if pd.isna(total_player_minutes):
+        continue
+
     positions = normalize_positions(
         row["positions"]
     )
 
-    # Empty positions means player never entered
     if len(positions) == 0:
         continue
 
@@ -162,11 +206,48 @@ for _, row in lineups.iterrows():
         match_id
     )
 
+    # Determine player's actual entry time
+    start_times = []
+
+    for stint in positions:
+
+        start = timestamp_to_seconds(
+            stint.get("from")
+        )
+
+        if start is not None:
+            start_times.append(start)
+
+    if len(start_times) == 0:
+        continue
+
+    player_entry = min(start_times)
+
+    # Use corrected total minutes to infer exit
+    player_exit = (
+        player_entry
+        + total_player_minutes * 60
+    )
+
+    player_exit = min(
+        player_exit,
+        match_duration,
+    )
+
+    # Build candidate position intervals
     for stint in positions:
 
         detailed_position = stint.get(
             "position"
         )
+
+        group = position_group(
+            detailed_position
+        )
+
+        # Ignore unmapped junk
+        if group == "Other":
+            continue
 
         start = timestamp_to_seconds(
             stint.get("from")
@@ -174,55 +255,128 @@ for _, row in lineups.iterrows():
 
         end_timestamp = stint.get("to")
 
+        if start is None:
+            continue
+
         if end_timestamp is None:
-            end = match_duration
+            end = player_exit
         else:
             end = timestamp_to_seconds(
                 end_timestamp
             )
 
-        if start is None or end is None:
+        if end is None:
             continue
 
-        start = min(
+        # Clip to player's actual playing window
+        start = max(
             start,
-            match_duration
+            player_entry
         )
 
         end = min(
             end,
-            match_duration
+            player_exit
         )
 
-        seconds = max(
-            0,
-            end - start
-        )
-
-        if seconds == 0:
+        if end <= start:
             continue
 
-        position_rows.append(
+        interval_rows.append(
             {
                 "match_id": match_id,
                 "team": team,
                 "player": player,
                 "position": detailed_position,
-                "position_group": position_group(
-                    detailed_position
-                ),
-                "position_minutes": seconds / 60,
+                "position_group": group,
+                "start": start,
+                "end": end,
             }
         )
 
 
-position_stints = pd.DataFrame(
-    position_rows
+position_intervals = pd.DataFrame(
+    interval_rows
 )
 
 
 # --------------------------------------------------
-# Aggregate minutes by player and position group
+# Remove overlapping intervals
+# --------------------------------------------------
+
+cleaned_rows = []
+
+for (
+    match_id,
+    team,
+    player
+), group_df in position_intervals.groupby(
+    [
+        "match_id",
+        "team",
+        "player",
+    ]
+):
+
+    group_df = group_df.sort_values(
+        [
+            "start",
+            "end",
+        ]
+    )
+
+    occupied_until = None
+
+    for _, stint in group_df.iterrows():
+
+        start = stint["start"]
+        end = stint["end"]
+
+        if occupied_until is None:
+            effective_start = start
+
+        else:
+            effective_start = max(
+                start,
+                occupied_until
+            )
+
+        if end <= effective_start:
+            continue
+
+        seconds = (
+            end
+            - effective_start
+        )
+
+        cleaned_rows.append(
+            {
+                "match_id": match_id,
+                "team": team,
+                "player": player,
+                "position": stint["position"],
+                "position_group":
+                    stint["position_group"],
+                "position_minutes":
+                    seconds / 60,
+            }
+        )
+
+        occupied_until = max(
+            end,
+            occupied_until
+            if occupied_until is not None
+            else end,
+        )
+
+
+position_stints = pd.DataFrame(
+    cleaned_rows
+)
+
+
+# --------------------------------------------------
+# Aggregate by player and position group
 # --------------------------------------------------
 
 player_position_minutes = (
@@ -241,50 +395,7 @@ player_position_minutes = (
 
 
 # --------------------------------------------------
-# Sort position groups by minutes played
-# --------------------------------------------------
-
-player_position_minutes = (
-    player_position_minutes
-    .sort_values(
-        [
-            "team",
-            "player",
-            "position_minutes",
-        ],
-        ascending=[
-            True,
-            True,
-            False,
-        ],
-    )
-)
-
-
-# --------------------------------------------------
-# Rank position groups for each player
-# --------------------------------------------------
-
-player_position_minutes[
-    "position_rank"
-] = (
-    player_position_minutes
-    .groupby(
-        [
-            "team",
-            "player",
-        ]
-    )
-    ["position_minutes"]
-    .rank(
-        method="first",
-        ascending=False,
-    )
-)
-
-
-# --------------------------------------------------
-# Calculate total position minutes
+# Total position minutes
 # --------------------------------------------------
 
 total_position_minutes = (
@@ -306,7 +417,6 @@ total_position_minutes = (
     )
 )
 
-
 player_position_minutes = (
     player_position_minutes
     .merge(
@@ -321,7 +431,7 @@ player_position_minutes = (
 
 
 # --------------------------------------------------
-# Calculate position share
+# Position share
 # --------------------------------------------------
 
 player_position_minutes[
@@ -334,6 +444,44 @@ player_position_minutes[
         "total_position_minutes"
     ]
     * 100
+)
+
+
+# --------------------------------------------------
+# Rank positions
+# --------------------------------------------------
+
+player_position_minutes = (
+    player_position_minutes
+    .sort_values(
+        [
+            "team",
+            "player",
+            "position_minutes",
+        ],
+        ascending=[
+            True,
+            True,
+            False,
+        ],
+    )
+)
+
+player_position_minutes[
+    "position_rank"
+] = (
+    player_position_minutes
+    .groupby(
+        [
+            "team",
+            "player",
+        ]
+    )
+    ["position_minutes"]
+    .rank(
+        method="first",
+        ascending=False,
+    )
 )
 
 
@@ -375,7 +523,6 @@ primary_positions = (
 # Secondary position
 # --------------------------------------------------
 
-
 secondary_positions = (
     player_position_minutes[
         player_position_minutes[
@@ -405,12 +552,19 @@ secondary_positions = (
     )
 )
 
-secondary_positions = secondary_positions[
-    secondary_positions["secondary_position_share"] >= MIN_SECONDARY_SHARE
-].copy()
+
+secondary_positions = (
+    secondary_positions[
+        secondary_positions[
+            "secondary_position_share"
+        ] >= MIN_SECONDARY_SHARE
+    ]
+    .copy()
+)
+
 
 # --------------------------------------------------
-# Combine primary and secondary positions
+# Combine primary and secondary
 # --------------------------------------------------
 
 player_positions = (
@@ -427,7 +581,7 @@ player_positions = (
 
 
 # --------------------------------------------------
-# Merge position information into player-season metrics
+# Merge with season metrics
 # --------------------------------------------------
 
 player_season_with_positions = (
@@ -444,7 +598,7 @@ player_season_with_positions = (
 
 
 # --------------------------------------------------
-# Save outputs
+# Save
 # --------------------------------------------------
 
 player_position_minutes.to_parquet(
@@ -479,10 +633,6 @@ print(
 print()
 
 
-# --------------------------------------------------
-# Preview
-# --------------------------------------------------
-
 display_columns = [
     "team",
     "player",
@@ -494,6 +644,7 @@ display_columns = [
     "secondary_position_minutes",
     "secondary_position_share",
 ]
+
 
 print(
     player_season_with_positions[

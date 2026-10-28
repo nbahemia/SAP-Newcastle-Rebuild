@@ -13,7 +13,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
 PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
-PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
+PROCESSED_DATA_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
 
 
 # --------------------------------------------------
@@ -33,40 +36,7 @@ print(f"Loaded {len(events):,} events")
 
 
 # --------------------------------------------------
-# Convert MM:SS into total seconds
-# --------------------------------------------------
-
-def timestamp_to_seconds(timestamp):
-    if timestamp is None or pd.isna(timestamp):
-        return None
-
-    minutes, seconds = timestamp.split(":")
-
-    return int(minutes) * 60 + int(seconds)
-
-
-# --------------------------------------------------
-# Determine actual match ending time
-# --------------------------------------------------
-
-match_max_period = (
-    events
-    .groupby("match_id")["period"]
-    .max()
-    .to_dict()
-)
-
-
-def get_match_duration(match_id):
-    max_period = match_max_period[match_id]
-
-    if max_period <= 2:
-        return 90 * 60
-
-    return 120 * 60
-
-# --------------------------------------------------
-# Normalize StatsBomb positions field
+# Helpers
 # --------------------------------------------------
 
 def normalize_positions(positions):
@@ -78,6 +48,84 @@ def normalize_positions(positions):
         return positions
 
     return []
+
+
+def timestamp_to_seconds(timestamp):
+
+    if timestamp is None or pd.isna(timestamp):
+        return None
+
+    minutes, seconds = timestamp.split(":")
+
+    return (
+        int(minutes) * 60
+        + int(seconds)
+    )
+
+
+# --------------------------------------------------
+# Standardized match duration
+# --------------------------------------------------
+
+match_max_period = (
+    events
+    .groupby("match_id")["period"]
+    .max()
+    .to_dict()
+)
+
+
+def get_match_duration(match_id):
+
+    max_period = match_max_period[match_id]
+
+    # Regulation match
+    if max_period <= 2:
+        return 90 * 60
+
+    # Extra-time match
+    return 120 * 60
+
+
+# --------------------------------------------------
+# Determine whether a position ending means the
+# player actually left the match
+# --------------------------------------------------
+
+def is_terminal_exit(reason):
+
+    if reason is None or pd.isna(reason):
+        return False
+
+    reason = str(reason)
+
+    # Tactical position changes do not mean
+    # the player left the match.
+    if reason == "Tactical Shift":
+        return False
+
+    # StatsBomb can record temporary player-off
+    # sequences. Do not treat these as substitutions.
+    if reason == "Player Off":
+        return False
+
+    # Final whistle is handled using standardized
+    # match duration.
+    if reason == "Final Whistle":
+        return False
+
+    # Actual substitution
+    if reason.startswith("Substitution - Off"):
+        return True
+
+    # Defensive handling for dismissals
+    if "Red Card" in reason:
+        return True
+
+    if "Second Yellow" in reason:
+        return True
+
+    return False
 
 
 # --------------------------------------------------
@@ -97,12 +145,19 @@ for _, row in lineups.iterrows():
         row["positions"]
     )
 
-    # Empty positions means the player never entered
+    # Empty positions = unused substitute
     if len(positions) == 0:
         continue
 
-    total_seconds = 0
-    match_duration = get_match_duration(match_id)
+    match_duration = get_match_duration(
+        match_id
+    )
+
+    # --------------------------------------------------
+    # Find when the player first entered
+    # --------------------------------------------------
+
+    start_times = []
 
     for stint in positions:
 
@@ -110,27 +165,86 @@ for _, row in lineups.iterrows():
             stint.get("from")
         )
 
-        end_timestamp = stint.get("to")
+        if start is not None:
+            start_times.append(start)
 
-        if end_timestamp is None:
-            end = match_duration
-        else:
-            end = timestamp_to_seconds(
-                end_timestamp
-            )
+    if len(start_times) == 0:
+        continue
 
-        if start is None or end is None:
-            continue
+    entry_time = min(start_times)
 
-        start = min(start, match_duration)
-        end = min(end, match_duration)
+    entry_time = min(
+        entry_time,
+        match_duration,
+    )
 
-        total_seconds += max(
-            0,
-            end - start
+
+    # --------------------------------------------------
+    # Find actual exit from the match
+    # --------------------------------------------------
+
+    terminal_exit_times = []
+
+    for stint in positions:
+
+        end_reason = stint.get(
+            "end_reason"
         )
 
+        if not is_terminal_exit(
+            end_reason
+        ):
+            continue
+
+        end = timestamp_to_seconds(
+            stint.get("to")
+        )
+
+        if end is None:
+            continue
+
+        # Ignore corrupted/irrelevant exit timestamps
+        # that occur before the player's real entry.
+        if end < entry_time:
+            continue
+
+        terminal_exit_times.append(
+            end
+        )
+
+
+    # --------------------------------------------------
+    # If never substituted/dismissed, player remained
+    # until standardized final whistle
+    # --------------------------------------------------
+
+    if len(terminal_exit_times) > 0:
+
+        exit_time = min(
+            terminal_exit_times
+        )
+
+        exit_time = min(
+            exit_time,
+            match_duration,
+        )
+
+    else:
+
+        exit_time = match_duration
+
+
+    # --------------------------------------------------
+    # Calculate minutes
+    # --------------------------------------------------
+
+    total_seconds = max(
+        0,
+        exit_time - entry_time
+    )
+
     minutes = total_seconds / 60
+
 
     player_minutes_rows.append(
         {
@@ -141,9 +255,47 @@ for _, row in lineups.iterrows():
             "minutes": minutes,
         }
     )
-   
+
+
 player_minutes = pd.DataFrame(
     player_minutes_rows
+)
+
+
+# --------------------------------------------------
+# Sanity checks
+# --------------------------------------------------
+
+invalid_minutes = player_minutes[
+    player_minutes["minutes"] > 120
+]
+
+print()
+print(
+    f"Rows over 120 minutes: "
+    f"{len(invalid_minutes):,}"
+)
+
+if len(invalid_minutes) > 0:
+
+    print(
+        invalid_minutes
+        .sort_values(
+            "minutes",
+            ascending=False
+        )
+        .head(20)
+        .to_string(index=False)
+    )
+
+
+zero_minutes = player_minutes[
+    player_minutes["minutes"] <= 0
+]
+
+print(
+    f"Rows at or below 0 minutes: "
+    f"{len(zero_minutes):,}"
 )
 
 
@@ -151,23 +303,78 @@ player_minutes = pd.DataFrame(
 # Save
 # --------------------------------------------------
 
+output_path = (
+    PROCESSED_DATA_DIR
+    / "player_minutes.parquet"
+)
+
 player_minutes.to_parquet(
-    PROCESSED_DATA_DIR / "player_minutes.parquet",
+    output_path,
     index=False
 )
 
 
+# --------------------------------------------------
+# Diagnostics
+# --------------------------------------------------
+
+print()
+
 print(
-    f"Saved {len(player_minutes):,} player-match minute rows"
+    f"Saved {len(player_minutes):,} "
+    "player-match minute rows"
+)
+
+print(
+    f"Output: {output_path}"
 )
 
 print()
+
 print(
     player_minutes
     .sort_values(
-        ["match_id", "team", "minutes"],
-        ascending=[True, True, False]
+        [
+            "match_id",
+            "team",
+            "minutes",
+        ],
+        ascending=[
+            True,
+            True,
+            False,
+        ],
     )
     .head(30)
-    .to_string(index=False)
+    .to_string(
+        index=False,
+        formatters={
+            "minutes":
+                "{:.1f}".format,
+        },
+    )
 )
+
+print(
+    f"Rows at or below 0 minutes: "
+    f"{len(zero_minutes):,}"
+)
+
+if len(zero_minutes) > 0:
+
+    print()
+    print("Zero-minute rows:")
+
+    print(
+        zero_minutes[
+            [
+                "match_id",
+                "team",
+                "player_id",
+                "player",
+                "minutes",
+            ]
+        ]
+        .head(50)
+        .to_string(index=False)
+    )

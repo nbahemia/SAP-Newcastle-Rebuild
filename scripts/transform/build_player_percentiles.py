@@ -101,13 +101,12 @@ POSITION_GROUP_MAP = {
     "Right Wing Back": "FB/WB",
 
     # Central / defensive midfielders
-    "Center Defensive Midfield": "DM",
-    "Left Defensive Midfield": "DM",
-    "Right Defensive Midfield": "DM",
-
-    "Center Midfield": "CM",
-    "Left Center Midfield": "CM",
-    "Right Center Midfield": "CM",
+    "Center Defensive Midfield": "DM/CM",
+    "Left Defensive Midfield": "DM/CM",
+    "Right Defensive Midfield": "DM/CM",
+    "Center Midfield": "DM/CM",
+    "Left Center Midfield": "DM/CM",
+    "Right Center Midfield": "DM/CM",
 
     # Attacking midfield / wide players
     "Center Attacking Midfield": "AM",

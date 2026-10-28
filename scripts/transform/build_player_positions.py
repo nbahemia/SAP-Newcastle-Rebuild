@@ -106,15 +106,11 @@ def position_group(position):
         "Center Defensive Midfield",
         "Left Defensive Midfield",
         "Right Defensive Midfield",
-    ]:
-        return "DM"
-    
-    if position in [
         "Center Midfield",
         "Left Center Midfield",
         "Right Center Midfield",
     ]:
-        return "CM"
+        return "DM/CM"
 
     if position in [
         "Center Attacking Midfield",

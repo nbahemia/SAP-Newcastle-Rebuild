@@ -13,78 +13,18 @@ PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 
 
 # --------------------------------------------------
-# Load processed inputs
+# Load player-match metrics
 # --------------------------------------------------
 
-metrics = pd.read_parquet(
-    PROCESSED_DATA_DIR / "player_match_metrics_raw.parquet"
+player_match = pd.read_parquet(
+    PROCESSED_DATA_DIR / "player_match_metrics.parquet"
 )
 
-minutes = pd.read_parquet(
-    PROCESSED_DATA_DIR / "player_minutes.parquet"
-)
-
-print(f"Loaded {len(metrics):,} player-match metric rows")
-print(f"Loaded {len(minutes):,} player-match minute rows")
+print(f"Loaded {len(player_match):,} player-match rows")
 
 
 # --------------------------------------------------
-# Merge player metrics with minutes
-# --------------------------------------------------
-
-player_match = metrics.merge(
-    minutes[
-        [
-            "match_id",
-            "team",
-            "player",
-            "minutes",
-        ]
-    ],
-    on=["match_id", "team", "player"],
-    how="left",
-)
-
-
-# --------------------------------------------------
-# Check for missing minutes
-# --------------------------------------------------
-
-missing_minutes = player_match[
-    player_match["minutes"].isna()
-]
-
-print(f"Rows missing minutes: {len(missing_minutes):,}")
-
-if len(missing_minutes) > 0:
-    print()
-    print("Players with missing minutes:")
-
-    print(
-        missing_minutes[
-            [
-                "match_id",
-                "team",
-                "player",
-            ]
-        ]
-        .head(20)
-        .to_string(index=False)
-    )
-
-
-# --------------------------------------------------
-# Remove invalid rows
-# --------------------------------------------------
-
-player_match = player_match[
-    player_match["minutes"].notna()
-    & (player_match["minutes"] > 0)
-].copy()
-
-
-# --------------------------------------------------
-# Metrics eligible for per-90 calculation
+# Metrics to aggregate
 # --------------------------------------------------
 
 metric_columns = [
@@ -103,90 +43,118 @@ metric_columns = [
 
 
 # --------------------------------------------------
-# Calculate per-90 metrics
+# Aggregate across all matches
+# --------------------------------------------------
+
+aggregation = {
+    "minutes": "sum",
+}
+
+for column in metric_columns:
+    aggregation[column] = "sum"
+
+
+player_season = (
+    player_match
+    .groupby(
+        ["team", "player"],
+        as_index=False
+    )
+    .agg(aggregation)
+)
+
+
+# --------------------------------------------------
+# Count appearances
+# --------------------------------------------------
+
+appearances = (
+    player_match
+    .groupby(["team", "player"])
+    .size()
+    .reset_index(name="appearances")
+)
+
+player_season = player_season.merge(
+    appearances,
+    on=["team", "player"],
+    how="left"
+)
+
+
+# --------------------------------------------------
+# Calculate season-level per-90 metrics
 # --------------------------------------------------
 
 for column in metric_columns:
-    player_match[f"{column}_per90"] = (
-        player_match[column]
-        / player_match["minutes"]
+    player_season[f"{column}_per90"] = (
+        player_season[column]
+        / player_season["minutes"]
         * 90
     )
 
 
 # --------------------------------------------------
-# Additional useful rate metrics
+# Additional rate metrics
 # --------------------------------------------------
 
-player_match["progressive_pass_pct"] = (
-    player_match["progressive_passes"]
-    / player_match["successful_passes"]
+player_season["progressive_pass_pct"] = (
+    player_season["progressive_passes"]
+    / player_season["successful_passes"]
     * 100
 )
 
-player_match["progressive_pass_pct"] = (
-    player_match["progressive_pass_pct"]
+player_season["progressive_pass_pct"] = (
+    player_season["progressive_pass_pct"]
     .fillna(0)
 )
 
 
 # --------------------------------------------------
-# Sort for cleaner output
+# Sort
 # --------------------------------------------------
 
-player_match = player_match.sort_values(
-    [
-        "match_id",
-        "team",
-        "minutes",
-    ],
-    ascending=[
-        True,
-        True,
-        False,
-    ],
+player_season = player_season.sort_values(
+    ["minutes", "team", "player"],
+    ascending=[False, True, True]
 )
 
 
 # --------------------------------------------------
-# Save final player-match metrics
+# Save
 # --------------------------------------------------
 
 output_path = (
     PROCESSED_DATA_DIR
-    / "player_match_metrics.parquet"
+    / "player_season_metrics.parquet"
 )
 
-player_match.to_parquet(
+player_season.to_parquet(
     output_path,
-    index=False,
-)
-
-
-# --------------------------------------------------
-# Diagnostics
-# --------------------------------------------------
-
-print()
-print(
-    f"Saved {len(player_match):,} player-match rows"
-)
-
-print(
-    f"Output: {output_path}"
+    index=False
 )
 
 print()
+print(
+    f"Saved {len(player_season):,} player-season rows"
+)
+
+print(f"Output: {output_path}")
+
+print()
+
+
+# --------------------------------------------------
+# Preview
+# --------------------------------------------------
 
 display_columns = [
-    "match_id",
     "team",
     "player",
+    "appearances",
     "minutes",
-    "successful_passes",
     "progressive_passes",
     "progressive_passes_per90",
-    "progressive_pass_pct",
     "progressive_carries",
     "progressive_carries_per90",
     "pressures",
@@ -196,7 +164,7 @@ display_columns = [
 ]
 
 print(
-    player_match[
+    player_season[
         display_columns
     ]
     .head(30)
@@ -205,10 +173,9 @@ print(
         formatters={
             "minutes": "{:.1f}".format,
             "progressive_passes_per90": "{:.2f}".format,
-            "progressive_pass_pct": "{:.1f}%".format,
             "progressive_carries_per90": "{:.2f}".format,
             "pressures_per90": "{:.2f}".format,
             "recoveries_per90": "{:.2f}".format,
-        },
+        }
     )
 )

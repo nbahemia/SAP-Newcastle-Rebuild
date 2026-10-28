@@ -38,7 +38,7 @@ print(
 # Metrics to percentile-rank
 # --------------------------------------------------
 
-metric_columns = [
+PERCENTILE_METRICS = [
     "successful_passes_per90",
     "progressive_passes_per90",
     "passes_into_final_third_per90",
@@ -50,6 +50,12 @@ metric_columns = [
     "attacking_third_recoveries_per90",
     "interceptions_per90",
     "duels_per90",
+
+    # Striker metrics
+    "shots_per90",
+    "goals_per90",
+    "xg_per90",
+    "shots_in_box_per90",
 ]
 
 
@@ -72,7 +78,7 @@ print(
 # Percentiles within position group
 # --------------------------------------------------
 
-for metric in metric_columns:
+for metric in PERCENTILE_METRICS:
 
     percentile_column = (
         metric.replace(

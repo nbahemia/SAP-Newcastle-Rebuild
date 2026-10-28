@@ -28,7 +28,7 @@ print(f"Loaded {len(player_match):,} player-match rows")
 # Metrics to aggregate
 # --------------------------------------------------
 
-metric_columns = [
+RAW_METRICS = [
     "successful_passes",
     "progressive_passes",
     "passes_into_final_third",
@@ -40,6 +40,12 @@ metric_columns = [
     "attacking_third_recoveries",
     "interceptions",
     "duels",
+
+    # Striker metrics
+    "shots",
+    "goals",
+    "xg",
+    "shots_in_box",
 ]
 
 
@@ -51,7 +57,7 @@ aggregation = {
     "minutes": "sum",
 }
 
-for column in metric_columns:
+for column in RAW_METRICS:
     aggregation[column] = "sum"
 
 
@@ -101,15 +107,11 @@ valid_minutes = (
 # Calculate season-level per-90 metrics
 # --------------------------------------------------
 
-for column in metric_columns:
+for metric in RAW_METRICS:
 
-    player_season[f"{column}_per90"] = np.where(
-        valid_minutes,
-        (
-            player_season[column]
-            / player_season["minutes"]
-            * 90
-        ),
+    player_season[f"{metric}_per90"] = np.where(
+        player_season["minutes"] > 0,
+        player_season[metric] / player_season["minutes"] * 90,
         np.nan,
     )
 

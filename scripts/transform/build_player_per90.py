@@ -18,7 +18,7 @@ PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 # --------------------------------------------------
 
 metrics = pd.read_parquet(
-    PROCESSED_DATA_DIR / "player_match_metrics_raw.parquet"
+    PROCESSED_DATA_DIR / "player_match_raw_metrics.parquet"
 )
 
 minutes = pd.read_parquet(
@@ -104,6 +104,10 @@ metric_columns = [
     "attacking_third_recoveries",
     "interceptions",
     "duels",
+    "shots",
+    "goals",
+    "xg",
+    "shots_in_box",
 ]
 
 

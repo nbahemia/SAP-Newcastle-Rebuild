@@ -10,7 +10,7 @@ PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "bsd"
 INPUT_FILE = PROCESSED_DIR / "player_season_metrics_enriched.parquet"
 OUTPUT_FILE = PROCESSED_DIR / "player_percentiles.parquet"
 
-MIN_MINUTES = 270
+MIN_MINUTES = 90
 
 PERCENTILE_METRICS = [
     "goals_per90",

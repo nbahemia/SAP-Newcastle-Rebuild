@@ -57,17 +57,7 @@ BROAD_POSITION_MAP = {
 
 
 # ---------------------------------------------------------
-# Tunable tactical-role thresholds
-# ---------------------------------------------------------
-#
-# avg_x / avg_y are expected to be 0-100 pitch coordinates.
-#
-# y = 50 is the horizontal center of the pitch.
-# wide_distance = abs(y - 50)
-#
-# These thresholds are deliberately simple and should be
-# validated against known EPL players before being treated
-# as final.
+# Tunable role thresholds
 # ---------------------------------------------------------
 
 DEFENDER_WIDE_DISTANCE = 18.0
@@ -75,6 +65,9 @@ MIDFIELDER_WIDE_DISTANCE = 20.0
 FORWARD_WIDE_DISTANCE = 17.0
 
 ATTACKING_MID_X = 60.0
+
+SIDE_LEFT_MAX = 42.0
+SIDE_RIGHT_MIN = 58.0
 
 
 # ---------------------------------------------------------
@@ -97,8 +90,7 @@ def infer_attack_direction(
     Infer team attacking direction from average-position data.
 
     If forwards have a higher mean x than defenders,
-    we treat increasing x as attacking.
-
+    increasing x is treated as attacking.
     Otherwise, decreasing x is attacking.
     """
 
@@ -137,26 +129,20 @@ def infer_attack_direction(
 
         return "left"
 
-    # Fallback if the team lacks enough positional data.
     return "right"
 
 
 def classify_tactical_role(
     broad_position,
     x_attacking,
-    y,
+    y_attacking,
 ):
-    """
-    Infer tactical role from broad position and normalized
-    average location.
-    """
-
     if pd.isna(broad_position):
         return None
 
     if (
         pd.isna(x_attacking)
-        or pd.isna(y)
+        or pd.isna(y_attacking)
     ):
         return None
 
@@ -164,19 +150,17 @@ def classify_tactical_role(
         x_attacking
     )
 
-    y = float(
-        y
+    y_attacking = float(
+        y_attacking
     )
 
     wide_distance = abs(
-        y - 50.0
+        y_attacking - 50.0
     )
 
-    # Goalkeeper
     if broad_position == "GK":
         return "GK"
 
-    # Defenders
     if broad_position == "DEF":
 
         if (
@@ -187,7 +171,6 @@ def classify_tactical_role(
 
         return "CB"
 
-    # Midfielders
     if broad_position == "MID":
 
         if (
@@ -204,7 +187,6 @@ def classify_tactical_role(
 
         return "DM/CM"
 
-    # Forwards
     if broad_position == "FWD":
 
         if (
@@ -216,6 +198,106 @@ def classify_tactical_role(
         return "ST"
 
     return None
+
+
+def classify_position_side(
+    position_group,
+    y_attacking,
+):
+    """
+    Convert normalized lateral position into LEFT/CENTRAL/RIGHT.
+
+    This is kept separate from position_group so percentiles can still
+    be calculated over broader role populations.
+    """
+
+    if pd.isna(position_group):
+        return None
+
+    if pd.isna(y_attacking):
+        return None
+
+    y_attacking = float(
+        y_attacking
+    )
+
+    if position_group in {
+        "GK",
+        "ST",
+        "AM",
+    }:
+        return "CENTRAL"
+
+    if y_attacking < SIDE_LEFT_MAX:
+        return "RIGHT"
+
+    if y_attacking > SIDE_RIGHT_MIN:
+        return "LEFT"
+
+    return "CENTRAL"
+
+
+def build_tactical_position(
+    position_group,
+    position_side,
+):
+    """
+    Create a presentation/recruitment-friendly position label.
+    """
+
+    if pd.isna(position_group):
+        return None
+
+    if position_group == "GK":
+        return "GK"
+
+    if position_group == "ST":
+        return "ST"
+
+    if position_group == "AM":
+        return "AM"
+
+    if position_group == "FB/WB":
+
+        if position_side == "LEFT":
+            return "LB/WB"
+
+        if position_side == "RIGHT":
+            return "RB/WB"
+
+        return "FB/WB"
+
+    if position_group == "CB":
+
+        if position_side == "LEFT":
+            return "LCB"
+
+        if position_side == "RIGHT":
+            return "RCB"
+
+        return "CB"
+
+    if position_group == "DM/CM":
+
+        if position_side == "LEFT":
+            return "LCM/DM"
+
+        if position_side == "RIGHT":
+            return "RCM/DM"
+
+        return "CM/DM"
+
+    if position_group == "W":
+
+        if position_side == "LEFT":
+            return "LW"
+
+        if position_side == "RIGHT":
+            return "RW"
+
+        return "W"
+
+    return position_group
 
 
 # ---------------------------------------------------------
@@ -400,7 +482,19 @@ def build_player_match_positions(
     ] = np.nan
 
     merged[
+        "y_attacking"
+    ] = np.nan
+
+    merged[
         "inferred_position_group"
+    ] = None
+
+    merged[
+        "position_side"
+    ] = None
+
+    merged[
+        "tactical_position"
     ] = None
 
     grouped = (
@@ -437,16 +531,32 @@ def build_player_match_positions(
         ] = direction
 
         if direction == "right":
+
             normalized_x = (
                 group[
                     "avg_x"
                 ]
             )
+
+            normalized_y = (
+                group[
+                    "avg_y"
+                ]
+            )
+
         else:
+
             normalized_x = (
                 100.0
                 - group[
                     "avg_x"
+                ]
+            )
+
+            normalized_y = (
+                100.0
+                - group[
+                    "avg_y"
                 ]
             )
 
@@ -455,12 +565,14 @@ def build_player_match_positions(
             "x_attacking",
         ] = normalized_x
 
+        merged.loc[
+            indices,
+            "y_attacking",
+        ] = normalized_y
+
         for index in indices:
 
-            merged.loc[
-                index,
-                "inferred_position_group",
-            ] = classify_tactical_role(
+            role = classify_tactical_role(
                 broad_position=merged.loc[
                     index,
                     "broad_position",
@@ -469,11 +581,41 @@ def build_player_match_positions(
                     index,
                     "x_attacking",
                 ],
-                y=merged.loc[
+                y_attacking=merged.loc[
                     index,
-                    "avg_y",
+                    "y_attacking",
                 ],
             )
+
+            side = classify_position_side(
+                position_group=role,
+                y_attacking=merged.loc[
+                    index,
+                    "y_attacking",
+                ],
+            )
+
+            tactical_position = (
+                build_tactical_position(
+                    position_group=role,
+                    position_side=side,
+                )
+            )
+
+            merged.loc[
+                index,
+                "inferred_position_group",
+            ] = role
+
+            merged.loc[
+                index,
+                "position_side",
+            ] = side
+
+            merged.loc[
+                index,
+                "tactical_position",
+            ] = tactical_position
 
     return merged
 
@@ -501,24 +643,24 @@ def summarize_player_positions(
         )
     ):
 
-        counts = (
+        role_counts = (
             group[
                 "inferred_position_group"
             ]
             .value_counts()
         )
 
-        if counts.empty:
+        if role_counts.empty:
             continue
 
-        max_count = (
-            counts.max()
+        role_max = (
+            role_counts.max()
         )
 
         tied_roles = (
-            counts[
-                counts
-                == max_count
+            role_counts[
+                role_counts
+                == role_max
             ]
             .index
             .tolist()
@@ -534,22 +676,106 @@ def summarize_player_positions(
 
         else:
 
-            tied_rows = group[
-                group[
-                    "inferred_position_group"
-                ].isin(
-                    tied_roles
-                )
-            ]
-
             primary_role = (
-                tied_rows
+                group[
+                    group[
+                        "inferred_position_group"
+                    ].isin(
+                        tied_roles
+                    )
+                ]
                 .sort_values(
                     "event_id"
                 )
                 .iloc[-1][
                     "inferred_position_group"
                 ]
+            )
+
+        role_group = group[
+            group[
+                "inferred_position_group"
+            ]
+            == primary_role
+        ].copy()
+
+        side_counts = (
+            role_group[
+                "position_side"
+            ]
+            .dropna()
+            .value_counts()
+        )
+
+        if side_counts.empty:
+            primary_side = None
+            side_share = np.nan
+
+        else:
+
+            side_max = (
+                side_counts.max()
+            )
+
+            tied_sides = (
+                side_counts[
+                    side_counts
+                    == side_max
+                ]
+                .index
+                .tolist()
+            )
+
+            if (
+                len(tied_sides)
+                == 1
+            ):
+                primary_side = (
+                    tied_sides[0]
+                )
+
+            else:
+
+                primary_side = (
+                    role_group[
+                        role_group[
+                            "position_side"
+                        ].isin(
+                            tied_sides
+                        )
+                    ]
+                    .sort_values(
+                        "event_id"
+                    )
+                    .iloc[-1][
+                        "position_side"
+                    ]
+                )
+
+            side_share = (
+                side_max
+                / len(role_group)
+            )
+
+        tactical_counts = (
+            role_group[
+                "tactical_position"
+            ]
+            .dropna()
+            .value_counts()
+        )
+
+        if tactical_counts.empty:
+            primary_tactical_position = (
+                build_tactical_position(
+                    primary_role,
+                    primary_side,
+                )
+            )
+
+        else:
+            primary_tactical_position = (
+                tactical_counts.index[0]
             )
 
         rows.append(
@@ -567,7 +793,7 @@ def summarize_player_positions(
                 ),
 
                 "position_group_share": (
-                    max_count
+                    role_max
                     / len(group)
                 ),
 
@@ -575,8 +801,30 @@ def summarize_player_positions(
                     ",".join(
                         f"{role}:{count}"
                         for role, count
-                        in counts.items()
+                        in role_counts.items()
                     )
+                ),
+
+                "primary_position_side": (
+                    primary_side
+                ),
+
+                "position_side_share": (
+                    side_share
+                ),
+
+                "observed_position_sides": (
+                    ",".join(
+                        f"{side}:{count}"
+                        for side, count
+                        in side_counts.items()
+                    )
+                    if not side_counts.empty
+                    else None
+                ),
+
+                "tactical_position": (
+                    primary_tactical_position
                 ),
 
                 "average_x_attacking": (
@@ -586,9 +834,9 @@ def summarize_player_positions(
                     .mean()
                 ),
 
-                "average_y": (
+                "average_y_attacking": (
                     group[
-                        "avg_y"
+                        "y_attacking"
                     ]
                     .mean()
                 ),
@@ -639,12 +887,12 @@ def main():
     )
 
     print()
-    print("=" * 88)
+    print("=" * 96)
     print(
-        "BUILDING BSD TACTICAL PLAYER POSITIONS"
-        .center(88)
+        "BUILDING BSD TACTICAL PLAYER POSITIONS + SIDES"
+        .center(96)
     )
-    print("=" * 88)
+    print("=" * 96)
 
     print(
         f"Players: "
@@ -689,10 +937,6 @@ def main():
         index=False,
     )
 
-    # -----------------------------------------------------
-    # Player metadata
-    # -----------------------------------------------------
-
     metadata_columns = [
         "player_id",
         "player_name",
@@ -729,10 +973,6 @@ def main():
         ),
     )
 
-    # -----------------------------------------------------
-    # Merge tactical role summary
-    # -----------------------------------------------------
-
     enriched = enriched.merge(
         position_summary,
         on="player_id",
@@ -768,10 +1008,6 @@ def main():
         "profile_fallback",
     )
 
-    # -----------------------------------------------------
-    # Age
-    # -----------------------------------------------------
-
     if (
         "date_of_birth"
         in enriched.columns
@@ -803,10 +1039,6 @@ def main():
             1
         )
 
-    # -----------------------------------------------------
-    # Column ordering
-    # -----------------------------------------------------
-
     preferred_columns = [
         "player_id",
         "player_name",
@@ -814,12 +1046,16 @@ def main():
         "profile_position_group",
         "primary_position_group",
         "position_group",
+        "primary_position_side",
+        "position_side_share",
+        "tactical_position",
         "position_source",
         "position_matches_observed",
         "position_group_share",
         "observed_position_groups",
+        "observed_position_sides",
         "average_x_attacking",
-        "average_y",
+        "average_y_attacking",
         "current_team_id",
         "team_name",
         "age_at_season_start",
@@ -860,17 +1096,13 @@ def main():
         index=False,
     )
 
-    # -----------------------------------------------------
-    # Diagnostics
-    # -----------------------------------------------------
-
     print()
-    print("=" * 88)
+    print("=" * 96)
     print(
-        "BSD TACTICAL POSITION SUMMARY"
-        .center(88)
+        "BSD TACTICAL POSITION + SIDE SUMMARY"
+        .center(96)
     )
-    print("=" * 88)
+    print("=" * 96)
 
     print(
         f"Season players: "
@@ -889,7 +1121,7 @@ def main():
 
     print()
     print(
-        "Final position groups:"
+        "Position groups:"
     )
 
     print(
@@ -903,24 +1135,12 @@ def main():
 
     print()
     print(
-        "Position source:"
+        "Tactical positions:"
     )
 
     print(
         enriched[
-            "position_source"
-        ]
-        .value_counts()
-    )
-
-    print()
-    print(
-        "Position-history match rows:"
-    )
-
-    print(
-        history[
-            "inferred_position_group"
+            "tactical_position"
         ]
         .value_counts(
             dropna=False
@@ -929,42 +1149,57 @@ def main():
 
     print()
     print(
-        "Sample inferred players:"
+        "Primary sides:"
     )
 
-    sample_columns = [
+    print(
+        enriched[
+            "primary_position_side"
+        ]
+        .value_counts(
+            dropna=False
+        )
+    )
+
+    print()
+    print(
+        "Newcastle United position check:"
+    )
+
+    newcastle_columns = [
         "player_name",
-        "position",
-        "primary_position_group",
-        "position_matches_observed",
+        "position_group",
+        "primary_position_side",
+        "tactical_position",
         "position_group_share",
+        "position_side_share",
         "observed_position_groups",
-        "average_x_attacking",
-        "average_y",
+        "observed_position_sides",
         "minutes",
     ]
 
-    sample_columns = [
+    newcastle_columns = [
         column
         for column
-        in sample_columns
+        in newcastle_columns
         if column
         in enriched.columns
     ]
 
-    inferred = enriched[
-        enriched[
-            "primary_position_group"
-        ].notna()
+    newcastle = enriched[
+        enriched["team_name"]
+        == "Newcastle United"
     ].copy()
 
-    if not inferred.empty:
+    if not newcastle.empty:
 
         print(
-            inferred
+            newcastle[
+                newcastle_columns
+            ]
             .sort_values(
                 [
-                    "primary_position_group",
+                    "position_group",
                     "minutes",
                 ],
                 ascending=[
@@ -972,10 +1207,6 @@ def main():
                     False,
                 ],
             )
-            [
-                sample_columns
-            ]
-            .head(60)
             .to_string(
                 index=False
             )
@@ -999,11 +1230,13 @@ def main():
         "player_name",
         "position",
         "primary_position_group",
+        "primary_position_side",
+        "tactical_position",
         "position_matches_observed",
         "position_group_share",
+        "position_side_share",
         "observed_position_groups",
-        "average_x_attacking",
-        "average_y",
+        "observed_position_sides",
     ]
 
     uncertainty_columns = [
@@ -1021,9 +1254,11 @@ def main():
             .sort_values(
                 [
                     "position_group_share",
+                    "position_side_share",
                     "position_matches_observed",
                 ],
                 ascending=[
+                    True,
                     True,
                     False,
                 ],

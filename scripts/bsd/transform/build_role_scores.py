@@ -472,6 +472,7 @@ def main():
             "team_name",
             "position_group_share",
             "position_group",
+            "tactical_position",
             "observed_position_groups",
             "minutes",
             "role_score",

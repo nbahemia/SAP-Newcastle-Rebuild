@@ -18,7 +18,7 @@ PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed" / "statsbomb"
 # --------------------------------------------------
 
 MIN_MINUTES = 180
-MIN_POSITION_SHARE = 0.60
+
 
 # --------------------------------------------------
 # Load player-season data with positions

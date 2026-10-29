@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-import re
 
 import numpy as np
 import pandas as pd
@@ -14,6 +13,7 @@ PROCESSED_DIR = PROJECT_ROOT / "data" / "processed" / "bsd"
 
 PLAYER_FILE = RAW_DIR / "players.parquet"
 LINEUPS_FILE = RAW_DIR / "lineups.parquet"
+AVERAGE_POSITIONS_FILE = RAW_DIR / "average_positions.parquet"
 
 SEASON_FILE = (
     PROCESSED_DIR
@@ -32,87 +32,10 @@ POSITION_HISTORY_FILE = (
 
 
 # ---------------------------------------------------------
-# Position mappings
+# Broad position mappings
 # ---------------------------------------------------------
 
-DIRECT_POSITION_MAP = {
-    # Goalkeeper
-    "G": "GK",
-    "GK": "GK",
-    "GOALKEEPER": "GK",
-
-    # Centre backs
-    "CB": "CB",
-    "LCB": "CB",
-    "RCB": "CB",
-    "CENTRE BACK": "CB",
-    "CENTER BACK": "CB",
-    "CENTRE-BACK": "CB",
-    "CENTER-BACK": "CB",
-
-    # Fullbacks / wingbacks
-    "LB": "FB/WB",
-    "RB": "FB/WB",
-    "LWB": "FB/WB",
-    "RWB": "FB/WB",
-    "LEFT BACK": "FB/WB",
-    "RIGHT BACK": "FB/WB",
-    "LEFT-BACK": "FB/WB",
-    "RIGHT-BACK": "FB/WB",
-    "LEFT WING BACK": "FB/WB",
-    "RIGHT WING BACK": "FB/WB",
-    "LEFT WING-BACK": "FB/WB",
-    "RIGHT WING-BACK": "FB/WB",
-
-    # Defensive / central midfield
-    "DM": "DM/CM",
-    "CDM": "DM/CM",
-    "CM": "DM/CM",
-    "LCM": "DM/CM",
-    "RCM": "DM/CM",
-    "DMC": "DM/CM",
-    "MC": "DM/CM",
-    "MIDFIELD": "DM/CM",
-    "CENTRAL MIDFIELD": "DM/CM",
-    "CENTRE MIDFIELD": "DM/CM",
-    "DEFENSIVE MIDFIELD": "DM/CM",
-
-    # Attacking midfield
-    "AM": "AM",
-    "CAM": "AM",
-    "LAM": "AM",
-    "RAM": "AM",
-    "AMC": "AM",
-    "ATTACKING MIDFIELD": "AM",
-    "ATTACKING MIDFIELDER": "AM",
-
-    # Wingers
-    "LW": "W",
-    "RW": "W",
-    "LM": "W",
-    "RM": "W",
-    "LWF": "W",
-    "RWF": "W",
-    "LEFT WING": "W",
-    "RIGHT WING": "W",
-    "LEFT MIDFIELD": "W",
-    "RIGHT MIDFIELD": "W",
-    "WINGER": "W",
-
-    # Strikers
-    "ST": "ST",
-    "CF": "ST",
-    "FW": "ST",
-    "STRIKER": "ST",
-    "CENTRE FORWARD": "ST",
-    "CENTER FORWARD": "ST",
-    "CENTRE-FORWARD": "ST",
-    "CENTER-FORWARD": "ST",
-    "FORWARD": "ST",
-}
-
-
-PROFILE_POSITION_MAP = {
+BROAD_POSITION_MAP = {
     "G": "GK",
     "GK": "GK",
     "GOALKEEPER": "GK",
@@ -134,188 +57,453 @@ PROFILE_POSITION_MAP = {
 
 
 # ---------------------------------------------------------
+# Tunable tactical-role thresholds
+# ---------------------------------------------------------
+#
+# avg_x / avg_y are expected to be 0-100 pitch coordinates.
+#
+# y = 50 is the horizontal center of the pitch.
+# wide_distance = abs(y - 50)
+#
+# These thresholds are deliberately simple and should be
+# validated against known EPL players before being treated
+# as final.
+# ---------------------------------------------------------
+
+DEFENDER_WIDE_DISTANCE = 18.0
+MIDFIELDER_WIDE_DISTANCE = 20.0
+FORWARD_WIDE_DISTANCE = 17.0
+
+ATTACKING_MID_X = 60.0
+
+
+# ---------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------
 
-def clean_position_text(value):
+def normalize_broad_position(value):
     if pd.isna(value):
         return None
 
-    text = str(value).strip().upper()
+    key = str(value).strip().upper()
 
-    if not text:
+    return BROAD_POSITION_MAP.get(key)
+
+
+def infer_attack_direction(
+    group: pd.DataFrame,
+) -> str:
+    """
+    Infer team attacking direction from average-position data.
+
+    If forwards have a higher mean x than defenders,
+    we treat increasing x as attacking.
+
+    Otherwise, decreasing x is attacking.
+    """
+
+    defenders = group[
+        group["broad_position"]
+        == "DEF"
+    ]
+
+    forwards = group[
+        group["broad_position"]
+        == "FWD"
+    ]
+
+    defenders = defenders[
+        defenders["avg_x"].notna()
+    ]
+
+    forwards = forwards[
+        forwards["avg_x"].notna()
+    ]
+
+    if (
+        not defenders.empty
+        and not forwards.empty
+    ):
+        defender_x = defenders[
+            "avg_x"
+        ].mean()
+
+        forward_x = forwards[
+            "avg_x"
+        ].mean()
+
+        if forward_x > defender_x:
+            return "right"
+
+        return "left"
+
+    # Fallback if the team lacks enough positional data.
+    return "right"
+
+
+def classify_tactical_role(
+    broad_position,
+    x_attacking,
+    y,
+):
+    """
+    Infer tactical role from broad position and normalized
+    average location.
+    """
+
+    if pd.isna(broad_position):
         return None
 
-    text = re.sub(
-        r"\s+",
-        " ",
-        text,
-    )
-
-    return text
-
-
-def classify_observed_position(value):
-    text = clean_position_text(
-        value
-    )
-
-    if text is None:
+    if (
+        pd.isna(x_attacking)
+        or pd.isna(y)
+    ):
         return None
 
-    if text in DIRECT_POSITION_MAP:
-        return DIRECT_POSITION_MAP[text]
+    x_attacking = float(
+        x_attacking
+    )
+
+    y = float(
+        y
+    )
+
+    wide_distance = abs(
+        y - 50.0
+    )
 
     # Goalkeeper
-    if (
-        "GOALKEEP" in text
-        or text == "GK"
-    ):
+    if broad_position == "GK":
         return "GK"
 
-    # Wingbacks
-    if (
-        "WING BACK" in text
-        or "WING-BACK" in text
-        or text.endswith("WB")
-    ):
-        return "FB/WB"
+    # Defenders
+    if broad_position == "DEF":
 
-    # Fullbacks
-    if (
-        "LEFT BACK" in text
-        or "RIGHT BACK" in text
-        or text in {"LB", "RB"}
-    ):
-        return "FB/WB"
+        if (
+            wide_distance
+            >= DEFENDER_WIDE_DISTANCE
+        ):
+            return "FB/WB"
 
-    # Centre backs
-    if (
-        "CENTRE BACK" in text
-        or "CENTER BACK" in text
-        or "CENTRE-BACK" in text
-        or "CENTER-BACK" in text
-        or text.endswith("CB")
-    ):
         return "CB"
 
-    # Attacking midfield
-    if (
-        "ATTACKING MID" in text
-        or text in {"AM", "CAM", "AMC"}
-    ):
-        return "AM"
+    # Midfielders
+    if broad_position == "MID":
 
-    # DM / CM
-    if (
-        "DEFENSIVE MID" in text
-        or "CENTRAL MID" in text
-        or "CENTRE MID" in text
-        or text in {
-            "DM",
-            "CDM",
-            "CM",
-            "DMC",
-            "MC",
-            "LCM",
-            "RCM",
-        }
-    ):
+        if (
+            wide_distance
+            >= MIDFIELDER_WIDE_DISTANCE
+        ):
+            return "W"
+
+        if (
+            x_attacking
+            >= ATTACKING_MID_X
+        ):
+            return "AM"
+
         return "DM/CM"
 
-    # Wingers
-    if (
-        "LEFT WING" in text
-        or "RIGHT WING" in text
-        or text in {
-            "LW",
-            "RW",
-            "LM",
-            "RM",
-            "LWF",
-            "RWF",
-        }
-    ):
-        return "W"
+    # Forwards
+    if broad_position == "FWD":
 
-    # Strikers
-    if (
-        "STRIKER" in text
-        or "CENTRE FORWARD" in text
-        or "CENTER FORWARD" in text
-        or text in {
-            "ST",
-            "CF",
-        }
-    ):
+        if (
+            wide_distance
+            >= FORWARD_WIDE_DISTANCE
+        ):
+            return "W"
+
         return "ST"
 
-    return "OTHER"
-
-
-def classify_profile_position(value):
-    text = clean_position_text(
-        value
-    )
-
-    if text is None:
-        return None
-
-    return PROFILE_POSITION_MAP.get(
-        text,
-        "OTHER",
-    )
+    return None
 
 
 # ---------------------------------------------------------
-# Build observed position history
+# Build match-level tactical positions
 # ---------------------------------------------------------
 
-def summarize_position_history(
+def build_player_match_positions(
     lineups: pd.DataFrame,
-):
+    average_positions: pd.DataFrame,
+) -> pd.DataFrame:
 
-    history = lineups.copy()
+    required_lineup_columns = [
+        "event_id",
+        "player_id",
+        "team_id",
+        "observed_position",
+    ]
 
-    history[
-        "observed_position_clean"
-    ] = history[
-        "observed_position"
-    ].apply(
-        clean_position_text
-    )
+    missing_lineup_columns = [
+        column
+        for column
+        in required_lineup_columns
+        if column
+        not in lineups.columns
+    ]
 
-    history[
-        "observed_position_group"
-    ] = history[
-        "observed_position"
-    ].apply(
-        classify_observed_position
-    )
+    if missing_lineup_columns:
+        raise ValueError(
+            "lineups.parquet is missing required columns: "
+            f"{missing_lineup_columns}"
+        )
 
-    history = history[
-        history[
-            "observed_position_group"
-        ].notna()
-    ].copy()
+    required_average_columns = [
+        "event_id",
+        "player_id",
+        "avg_x",
+        "avg_y",
+    ]
 
-    known = history[
-        history[
-            "observed_position_group"
+    missing_average_columns = [
+        column
+        for column
+        in required_average_columns
+        if column
+        not in average_positions.columns
+    ]
+
+    if missing_average_columns:
+        raise ValueError(
+            "average_positions.parquet is missing required columns: "
+            f"{missing_average_columns}"
+        )
+
+    lineup = (
+        lineups[
+            required_lineup_columns
         ]
-        != "OTHER"
+        .copy()
+        .drop_duplicates(
+            subset=[
+                "event_id",
+                "player_id",
+            ],
+            keep="first",
+        )
+    )
+
+    lineup[
+        "broad_position"
+    ] = lineup[
+        "observed_position"
+    ].apply(
+        normalize_broad_position
+    )
+
+    avg_columns = [
+        "event_id",
+        "player_id",
+        "avg_x",
+        "avg_y",
+    ]
+
+    if (
+        "team_id"
+        in average_positions.columns
+    ):
+        avg_columns.append(
+            "team_id"
+        )
+
+    avg = (
+        average_positions[
+            avg_columns
+        ]
+        .copy()
+        .drop_duplicates(
+            subset=[
+                "event_id",
+                "player_id",
+            ],
+            keep="first",
+        )
+    )
+
+    for column in [
+        "event_id",
+        "player_id",
+        "team_id",
+        "avg_x",
+        "avg_y",
+    ]:
+        if (
+            column
+            in avg.columns
+        ):
+            avg[column] = pd.to_numeric(
+                avg[column],
+                errors="coerce",
+            )
+
+        if (
+            column
+            in lineup.columns
+        ):
+            lineup[column] = pd.to_numeric(
+                lineup[column],
+                errors="coerce",
+            )
+
+    merged = lineup.merge(
+        avg,
+        on=[
+            "event_id",
+            "player_id",
+        ],
+        how="left",
+        suffixes=(
+            "_lineup",
+            "_avg",
+        ),
+        validate="one_to_one",
+    )
+
+    if (
+        "team_id_lineup"
+        in merged.columns
+    ):
+        merged[
+            "team_id"
+        ] = merged[
+            "team_id_lineup"
+        ]
+
+        if (
+            "team_id_avg"
+            in merged.columns
+        ):
+            merged[
+                "team_id"
+            ] = merged[
+                "team_id"
+            ].fillna(
+                merged[
+                    "team_id_avg"
+                ]
+            )
+
+    elif (
+        "team_id"
+        not in merged.columns
+    ):
+        merged[
+            "team_id"
+        ] = np.nan
+
+    merged[
+        "attack_direction"
+    ] = None
+
+    merged[
+        "x_attacking"
+    ] = np.nan
+
+    merged[
+        "inferred_position_group"
+    ] = None
+
+    grouped = (
+        merged
+        .dropna(
+            subset=[
+                "team_id",
+            ]
+        )
+        .groupby(
+            [
+                "event_id",
+                "team_id",
+            ]
+        )
+    )
+
+    for (
+        event_id,
+        team_id
+    ), group in grouped:
+
+        indices = group.index
+
+        direction = (
+            infer_attack_direction(
+                group
+            )
+        )
+
+        merged.loc[
+            indices,
+            "attack_direction",
+        ] = direction
+
+        if direction == "right":
+            normalized_x = (
+                group[
+                    "avg_x"
+                ]
+            )
+        else:
+            normalized_x = (
+                100.0
+                - group[
+                    "avg_x"
+                ]
+            )
+
+        merged.loc[
+            indices,
+            "x_attacking",
+        ] = normalized_x
+
+        for index in indices:
+
+            merged.loc[
+                index,
+                "inferred_position_group",
+            ] = classify_tactical_role(
+                broad_position=merged.loc[
+                    index,
+                    "broad_position",
+                ],
+                x_attacking=merged.loc[
+                    index,
+                    "x_attacking",
+                ],
+                y=merged.loc[
+                    index,
+                    "avg_y",
+                ],
+            )
+
+    return merged
+
+
+# ---------------------------------------------------------
+# Summarize player roles across matches
+# ---------------------------------------------------------
+
+def summarize_player_positions(
+    history: pd.DataFrame,
+) -> pd.DataFrame:
+
+    valid = history[
+        history[
+            "inferred_position_group"
+        ].notna()
     ].copy()
 
     rows = []
 
-    for player_id, group in known.groupby(
-        "player_id",
-        sort=False,
+    for player_id, group in (
+        valid.groupby(
+            "player_id",
+            sort=False,
+        )
     ):
 
         counts = (
             group[
-                "observed_position_group"
+                "inferred_position_group"
             ]
             .value_counts()
         )
@@ -323,80 +511,93 @@ def summarize_position_history(
         if counts.empty:
             continue
 
-        max_count = counts.max()
+        max_count = (
+            counts.max()
+        )
 
         tied_roles = (
             counts[
-                counts == max_count
+                counts
+                == max_count
             ]
             .index
             .tolist()
         )
 
-        if len(tied_roles) == 1:
-            primary_group = tied_roles[0]
+        if (
+            len(tied_roles)
+            == 1
+        ):
+            primary_role = (
+                tied_roles[0]
+            )
 
         else:
-            tied_group = group[
+
+            tied_rows = group[
                 group[
-                    "observed_position_group"
+                    "inferred_position_group"
                 ].isin(
                     tied_roles
                 )
             ]
 
-            primary_group = (
-                tied_group
+            primary_role = (
+                tied_rows
                 .sort_values(
                     "event_id"
                 )
                 .iloc[-1][
-                    "observed_position_group"
+                    "inferred_position_group"
                 ]
             )
 
-        raw_counts = (
-            group[
-                "observed_position_clean"
-            ]
-            .value_counts()
-        )
-
-        primary_raw_position = (
-            raw_counts.index[0]
-            if not raw_counts.empty
-            else None
-        )
-
         rows.append(
             {
-                "player_id": int(player_id),
-                "primary_observed_position": (
-                    primary_raw_position
+                "player_id": int(
+                    player_id
                 ),
+
                 "primary_position_group": (
-                    primary_group
+                    primary_role
                 ),
+
                 "position_matches_observed": (
                     len(group)
                 ),
+
                 "position_group_share": (
                     max_count
                     / len(group)
                 ),
-                "observed_position_groups": ",".join(
-                    f"{role}:{count}"
-                    for role, count
-                    in counts.items()
+
+                "observed_position_groups": (
+                    ",".join(
+                        f"{role}:{count}"
+                        for role, count
+                        in counts.items()
+                    )
+                ),
+
+                "average_x_attacking": (
+                    group[
+                        "x_attacking"
+                    ]
+                    .mean()
+                ),
+
+                "average_y": (
+                    group[
+                        "avg_y"
+                    ]
+                    .mean()
                 ),
             }
         )
 
-    summary = pd.DataFrame(
+    return pd.DataFrame(
         rows
     )
-
-    return history, summary
 
 
 # ---------------------------------------------------------
@@ -408,6 +609,7 @@ def main():
     for path in [
         PLAYER_FILE,
         LINEUPS_FILE,
+        AVERAGE_POSITIONS_FILE,
         SEASON_FILE,
     ]:
 
@@ -426,6 +628,12 @@ def main():
         LINEUPS_FILE
     )
 
+    average_positions = (
+        pd.read_parquet(
+            AVERAGE_POSITIONS_FILE
+        )
+    )
+
     season = pd.read_parquet(
         SEASON_FILE
     )
@@ -433,7 +641,7 @@ def main():
     print()
     print("=" * 88)
     print(
-        "BUILDING BSD OBSERVED PLAYER POSITIONS"
+        "BUILDING BSD TACTICAL PLAYER POSITIONS"
         .center(88)
     )
     print("=" * 88)
@@ -449,13 +657,25 @@ def main():
     )
 
     print(
+        f"Average-position rows: "
+        f"{len(average_positions):,}"
+    )
+
+    print(
         f"Season rows: "
         f"{len(season):,}"
     )
 
-    history, position_summary = (
-        summarize_position_history(
-            lineups
+    history = (
+        build_player_match_positions(
+            lineups=lineups,
+            average_positions=average_positions,
+        )
+    )
+
+    position_summary = (
+        summarize_player_positions(
+            history
         )
     )
 
@@ -470,7 +690,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # Metadata merge
+    # Player metadata
     # -----------------------------------------------------
 
     metadata_columns = [
@@ -490,8 +710,10 @@ def main():
 
     metadata_columns = [
         column
-        for column in metadata_columns
-        if column in players.columns
+        for column
+        in metadata_columns
+        if column
+        in players.columns
     ]
 
     enriched = season.merge(
@@ -508,7 +730,7 @@ def main():
     )
 
     # -----------------------------------------------------
-    # Position merge
+    # Merge tactical role summary
     # -----------------------------------------------------
 
     enriched = enriched.merge(
@@ -523,7 +745,7 @@ def main():
     ] = enriched[
         "position"
     ].apply(
-        classify_profile_position
+        normalize_broad_position
     )
 
     enriched[
@@ -542,7 +764,7 @@ def main():
         enriched[
             "primary_position_group"
         ].notna(),
-        "observed_lineup",
+        "average_position_inference",
         "profile_fallback",
     )
 
@@ -550,7 +772,10 @@ def main():
     # Age
     # -----------------------------------------------------
 
-    if "date_of_birth" in enriched.columns:
+    if (
+        "date_of_birth"
+        in enriched.columns
+    ):
 
         dob = pd.to_datetime(
             enriched[
@@ -559,8 +784,10 @@ def main():
             errors="coerce",
         )
 
-        reference_date = pd.Timestamp(
-            "2026-07-01"
+        reference_date = (
+            pd.Timestamp(
+                "2026-07-01"
+            )
         )
 
         enriched[
@@ -585,13 +812,14 @@ def main():
         "player_name",
         "position",
         "profile_position_group",
-        "primary_observed_position",
         "primary_position_group",
         "position_group",
         "position_source",
         "position_matches_observed",
         "position_group_share",
         "observed_position_groups",
+        "average_x_attacking",
+        "average_y",
         "current_team_id",
         "team_name",
         "age_at_season_start",
@@ -608,14 +836,18 @@ def main():
 
     preferred_columns = [
         column
-        for column in preferred_columns
-        if column in enriched.columns
+        for column
+        in preferred_columns
+        if column
+        in enriched.columns
     ]
 
     remaining_columns = [
         column
-        for column in enriched.columns
-        if column not in preferred_columns
+        for column
+        in enriched.columns
+        if column
+        not in preferred_columns
     ]
 
     enriched = enriched[
@@ -629,13 +861,13 @@ def main():
     )
 
     # -----------------------------------------------------
-    # Summary
+    # Diagnostics
     # -----------------------------------------------------
 
     print()
     print("=" * 88)
     print(
-        "BSD OBSERVED POSITION SUMMARY"
+        "BSD TACTICAL POSITION SUMMARY"
         .center(88)
     )
     print("=" * 88)
@@ -646,12 +878,12 @@ def main():
     )
 
     print(
-        f"Players with observed role: "
+        "Players with inferred tactical role: "
         f"{enriched['primary_position_group'].notna().sum():,}"
     )
 
     print(
-        f"Profile fallbacks: "
+        "Profile fallbacks: "
         f"{enriched['primary_position_group'].isna().sum():,}"
     )
 
@@ -683,19 +915,79 @@ def main():
 
     print()
     print(
-        "Lowest observed-role certainty "
-        "(minimum 2 observed matches):"
+        "Position-history match rows:"
     )
 
-    certainty_columns = [
+    print(
+        history[
+            "inferred_position_group"
+        ]
+        .value_counts(
+            dropna=False
+        )
+    )
+
+    print()
+    print(
+        "Sample inferred players:"
+    )
+
+    sample_columns = [
         "player_name",
-        "primary_observed_position",
+        "position",
         "primary_position_group",
         "position_matches_observed",
         "position_group_share",
+        "observed_position_groups",
+        "average_x_attacking",
+        "average_y",
+        "minutes",
     ]
 
-    uncertain = enriched[
+    sample_columns = [
+        column
+        for column
+        in sample_columns
+        if column
+        in enriched.columns
+    ]
+
+    inferred = enriched[
+        enriched[
+            "primary_position_group"
+        ].notna()
+    ].copy()
+
+    if not inferred.empty:
+
+        print(
+            inferred
+            .sort_values(
+                [
+                    "primary_position_group",
+                    "minutes",
+                ],
+                ascending=[
+                    True,
+                    False,
+                ],
+            )
+            [
+                sample_columns
+            ]
+            .head(60)
+            .to_string(
+                index=False
+            )
+        )
+
+    print()
+    print(
+        "Lowest role certainty "
+        "(minimum 2 observed matches):"
+    )
+
+    uncertainty = enriched[
         enriched[
             "position_matches_observed"
         ]
@@ -703,17 +995,43 @@ def main():
         >= 2
     ]
 
-    if not uncertain.empty:
+    uncertainty_columns = [
+        "player_name",
+        "position",
+        "primary_position_group",
+        "position_matches_observed",
+        "position_group_share",
+        "observed_position_groups",
+        "average_x_attacking",
+        "average_y",
+    ]
+
+    uncertainty_columns = [
+        column
+        for column
+        in uncertainty_columns
+        if column
+        in uncertainty.columns
+    ]
+
+    if not uncertainty.empty:
 
         print(
-            uncertain
+            uncertainty
             .sort_values(
-                "position_group_share"
+                [
+                    "position_group_share",
+                    "position_matches_observed",
+                ],
+                ascending=[
+                    True,
+                    False,
+                ],
             )
             [
-                certainty_columns
+                uncertainty_columns
             ]
-            .head(20)
+            .head(30)
             .to_string(
                 index=False
             )

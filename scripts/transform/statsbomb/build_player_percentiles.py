@@ -8,9 +8,9 @@ import pandas as pd
 # Paths
 # --------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
+PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed" / "statsbomb"
 
 
 # --------------------------------------------------

@@ -9,10 +9,10 @@ import pandas as pd
 # Paths
 # ---------------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-RAW = PROJECT_ROOT / "data" / "raw"
-PROCESSED = PROJECT_ROOT / "data" / "processed"
+RAW = PROJECT_ROOT / "data" / "raw" / "statsbomb"
+PROCESSED = PROJECT_ROOT / "data" / "processed" / "statsbomb"
 
 EVENTS_FILE = RAW / "events.parquet"
 

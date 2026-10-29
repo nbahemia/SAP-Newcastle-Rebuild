@@ -6,8 +6,8 @@ from statsbombpy import sb
 COMPETITION_ID = 43
 SEASON_ID = 106
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw" / "statsbomb"
 
 RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
 

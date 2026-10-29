@@ -1,789 +1,733 @@
 from pathlib import Path
+import argparse
+import textwrap
 
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
+from mplsoccer import PyPizza, Radar
 
 
 # ---------------------------------------------------------
 # Paths
 # ---------------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 PROCESSED = PROJECT_ROOT / "data" / "processed"
+ROLE_ANALYSIS = PROCESSED / "role_analysis"
 
-INPUT_FILE = (
-    PROCESSED
-    / "player_percentiles.parquet"
-)
+VISUALIZATIONS = PROJECT_ROOT / "visualizations" / "player_profiles"
 
-OUTPUT_FILE = (
-    PROCESSED
-    / "role_analysis"
-    / "striker_scouting_shortlist.parquet"
-)
+PERCENTILES_FILE = PROCESSED / "player_percentiles.parquet"
 
 
 # ---------------------------------------------------------
-# Settings
+# Role Configuration
 # ---------------------------------------------------------
 
-MIN_MINUTES = 270
-
-ROLE_NAME = "Jaissle Line-Leading No. 9"
-
-
-# ---------------------------------------------------------
-# Jaissle No. 9 Weights
-# ---------------------------------------------------------
-#
-# Based on the shared characteristics of:
-#
-# - Benjamin Sesko under Jaissle
-# - Ivan Toney under Jaissle
-#
-# The role emphasizes:
-#
-# 1. Shot / goal threat
-# 2. Penalty-box activity
-# 3. Front-line pressing
-# 4. Duel involvement
-#
-# It intentionally DOES NOT reward:
-#
-# - high passing volume
-# - progressive passing
-# - progressive carrying
-#
-# Those characteristics can identify good attackers,
-# but do not specifically identify the type of line-leading
-# striker we are trying to find.
-#
-# Total = 1.00
-# ---------------------------------------------------------
-
-STRIKER_WEIGHTS = {
-    "xg_percentile": 0.25,
-    "shots_in_box_percentile": 0.20,
-    "shots_percentile": 0.15,
-    "goals_percentile": 0.10,
-
-    "attacking_third_pressures_percentile": 0.125,
-    "pressures_percentile": 0.075,
-
-    "duels_percentile": 0.10,
-}
-
-
-# ---------------------------------------------------------
-# Pure No. 9 Weights
-# ---------------------------------------------------------
-#
-# Even narrower interpretation of the role.
-#
-# This score asks:
-#
-# "Does this player statistically behave like a genuine
-# penalty-box / line-leading striker?"
-#
-# Total = 1.00
-# ---------------------------------------------------------
-
-PURE_9_WEIGHTS = {
-    "xg_percentile": 0.30,
-    "shots_in_box_percentile": 0.25,
-    "shots_percentile": 0.15,
-    "goals_percentile": 0.10,
-
-    "duels_percentile": 0.10,
-
-    "attacking_third_pressures_percentile": 0.10,
-}
-
-
-# ---------------------------------------------------------
-# Validate Weights
-# ---------------------------------------------------------
-
-def validate_weights():
-
-    striker_total = sum(
-        STRIKER_WEIGHTS.values()
-    )
-
-    pure_9_total = sum(
-        PURE_9_WEIGHTS.values()
-    )
-
-    if abs(striker_total - 1.0) > 1e-9:
-        raise ValueError(
-            "STRIKER_WEIGHTS must sum to 1.0. "
-            f"Current total: {striker_total:.4f}"
-        )
-
-    if abs(pure_9_total - 1.0) > 1e-9:
-        raise ValueError(
-            "PURE_9_WEIGHTS must sum to 1.0. "
-            f"Current total: {pure_9_total:.4f}"
-        )
-
-
-# ---------------------------------------------------------
-# Validate Required Columns
-# ---------------------------------------------------------
-
-def validate_columns(
-    dataframe: pd.DataFrame,
-    required_columns: list[str],
-    model_name: str,
-):
-
-    missing = [
-        column
-        for column in required_columns
-        if column not in dataframe.columns
-    ]
-
-    if missing:
-
-        message = (
-            f"\nMissing metrics required for "
-            f"{model_name}:\n"
-        )
-
-        for column in missing:
-            message += f"  - {column}\n"
-
-        raise ValueError(message)
-
-
-# ---------------------------------------------------------
-# General Jaissle No. 9 Score
-# ---------------------------------------------------------
-
-def calculate_striker_fit(
-    candidates: pd.DataFrame,
-) -> pd.DataFrame:
-
-    candidates = candidates.copy()
-
-    validate_columns(
-        candidates,
-        list(STRIKER_WEIGHTS.keys()),
-        "Jaissle No. 9 model",
-    )
-
-    candidates["striker_fit_score"] = 0.0
-
-    for metric, weight in STRIKER_WEIGHTS.items():
-
-        candidates["striker_fit_score"] += (
-            candidates[metric]
-            * weight
-        )
-
-    candidates["striker_fit_score"] = (
-        candidates["striker_fit_score"]
-        .round(1)
-    )
-
-
-    # -----------------------------------------------------
-    # Component Scores
-    # -----------------------------------------------------
-
-    candidates["goal_threat_score"] = (
-        candidates[
-            [
-                "xg_percentile",
-                "shots_in_box_percentile",
-                "shots_percentile",
-                "goals_percentile",
-            ]
-        ]
-        .mean(axis=1)
-        .round(1)
-    )
-
-
-    candidates["box_threat_score"] = (
-        candidates[
-            [
-                "xg_percentile",
-                "shots_in_box_percentile",
-            ]
-        ]
-        .mean(axis=1)
-        .round(1)
-    )
-
-
-    candidates["pressing_score"] = (
-        (
-            candidates[
-                "attacking_third_pressures_percentile"
-            ]
-            * 0.625
-        )
-        +
-        (
-            candidates[
-                "pressures_percentile"
-            ]
-            * 0.375
-        )
-    ).round(1)
-
-
-    candidates["duel_score"] = (
-        candidates[
-            "duels_percentile"
-        ]
-        .round(1)
-    )
-
-
-    return candidates
-
-
-# ---------------------------------------------------------
-# Pure No. 9 Score
-# ---------------------------------------------------------
-
-def calculate_pure_9_fit(
-    candidates: pd.DataFrame,
-) -> pd.DataFrame:
-
-    candidates = candidates.copy()
-
-    validate_columns(
-        candidates,
-        list(PURE_9_WEIGHTS.keys()),
-        "Pure No. 9 model",
-    )
-
-    candidates["pure_9_fit_score"] = 0.0
-
-    for metric, weight in PURE_9_WEIGHTS.items():
-
-        candidates["pure_9_fit_score"] += (
-            candidates[metric]
-            * weight
-        )
-
-    candidates["pure_9_fit_score"] = (
-        candidates["pure_9_fit_score"]
-        .round(1)
-    )
-
-
-    # -----------------------------------------------------
-    # Pure-9 Components
-    # -----------------------------------------------------
-
-    candidates["pure_9_scoring_score"] = (
-        candidates[
-            [
-                "xg_percentile",
-                "shots_in_box_percentile",
-                "shots_percentile",
-                "goals_percentile",
-            ]
-        ]
-        .mean(axis=1)
-        .round(1)
-    )
-
-
-    candidates["pure_9_duel_score"] = (
-        candidates[
-            "duels_percentile"
-        ]
-        .round(1)
-    )
-
-
-    candidates["pure_9_pressing_score"] = (
-        candidates[
-            "attacking_third_pressures_percentile"
-        ]
-        .round(1)
-    )
-
-
-    return candidates
-
-
-# ---------------------------------------------------------
-# Build Striker Shortlist
-# ---------------------------------------------------------
-
-def build_striker_shortlist(
-    players: pd.DataFrame,
-) -> pd.DataFrame:
-
-    required_base_columns = [
-        "player",
-        "team",
-        "primary_position_group",
-        "minutes",
-    ]
-
-    validate_columns(
-        players,
-        required_base_columns,
-        "striker shortlist",
-    )
-
-
-    # -----------------------------------------------------
-    # Filter to observed strikers
-    # -----------------------------------------------------
-
-    candidates = players[
-        (
-            players["primary_position_group"]
-            == "ST"
-        )
-        &
-        (
-            players["minutes"]
-            >= MIN_MINUTES
-        )
-    ].copy()
-
-
-    print(
-        f"\nEligible strikers: "
-        f"{len(candidates)} "
-        f"(minimum {MIN_MINUTES} minutes)"
-    )
-
-
-    # -----------------------------------------------------
-    # Calculate Models
-    # -----------------------------------------------------
-
-    candidates = calculate_striker_fit(
-        candidates
-    )
-
-    candidates = calculate_pure_9_fit(
-        candidates
-    )
-
-
-    # -----------------------------------------------------
-    # Rankings
-    # -----------------------------------------------------
-
-    candidates["striker_rank"] = (
-        candidates[
-            "striker_fit_score"
-        ]
-        .rank(
-            method="min",
-            ascending=False,
-        )
-        .astype(int)
-    )
-
-
-    candidates["pure_9_rank"] = (
-        candidates[
-            "pure_9_fit_score"
-        ]
-        .rank(
-            method="min",
-            ascending=False,
-        )
-        .astype(int)
-    )
-
-
-    # -----------------------------------------------------
-    # Sort
-    # -----------------------------------------------------
-
-    candidates = candidates.sort_values(
-        by=[
-            "striker_fit_score",
-            "pure_9_fit_score",
-            "minutes",
+ROLE_CONFIG = {
+    "striker": {
+        "title": "Jaissle Line-Leading No. 9",
+        "shortlist_file": ROLE_ANALYSIS / "striker_scouting_shortlist.parquet",
+        "score_column": "striker_fit_score",
+        "metrics": [
+            "xg_percentile",
+            "shots_percentile",
+            "shots_in_box_percentile",
+            "goals_percentile",
+            "attacking_third_pressures_percentile",
+            "duels_percentile",
         ],
-        ascending=[
-            False,
-            False,
-            False,
-        ],
-    )
-
-
-    # -----------------------------------------------------
-    # Output Columns
-    # -----------------------------------------------------
-
-    output_columns = [
-
-        # Rankings
-        "striker_rank",
-        "pure_9_rank",
-
-        # Player info
-        "player",
-        "team",
-        "primary_position_group",
-        "secondary_position_group",
-        "minutes",
-        "appearances",
-
-        # Overall scores
-        "striker_fit_score",
-        "pure_9_fit_score",
-
-        # Components
-        "goal_threat_score",
-        "box_threat_score",
-        "pressing_score",
-        "duel_score",
-
-        "pure_9_scoring_score",
-        "pure_9_duel_score",
-        "pure_9_pressing_score",
-
-        # -------------------------------------------------
-        # Raw /90 Metrics
-        # -------------------------------------------------
-
-        "goals_per90",
-        "xg_per90",
-        "shots_per90",
-        "shots_in_box_per90",
-
-        "pressures_per90",
-        "attacking_third_pressures_per90",
-
-        "duels_per90",
-
-        # -------------------------------------------------
-        # Percentiles
-        # -------------------------------------------------
-
-        "goals_percentile",
-        "xg_percentile",
-        "shots_percentile",
-        "shots_in_box_percentile",
-
-        "pressures_percentile",
-        "attacking_third_pressures_percentile",
-
-        "duels_percentile",
-    ]
-
-
-    output_columns = [
-        column
-        for column in output_columns
-        if column in candidates.columns
-    ]
-
-
-    return candidates[
-        output_columns
-    ].copy()
-
-
-# ---------------------------------------------------------
-# Terminal Formatting
-# ---------------------------------------------------------
-
-def print_section(
-    title: str,
-):
-
-    width = 92
-
-    print()
-    print("=" * width)
-
-    print(
-        title.center(width)
-    )
-
-    print("=" * width)
-
-
-def print_role_table(
-    shortlist: pd.DataFrame,
-    top_n: int = 15,
-):
-
-    display = shortlist[
-        [
-            "striker_rank",
-            "player",
-            "team",
-            "minutes",
-            "striker_fit_score",
-            "pure_9_fit_score",
-            "goal_threat_score",
-            "pressing_score",
-            "duel_score",
-        ]
-    ].head(top_n).copy()
-
-
-    display.columns = [
-        "Rank",
-        "Player",
-        "Team",
-        "Min",
-        "Fit",
-        "Pure9",
-        "Goal",
-        "Press",
-        "Duel",
-    ]
-
-
-    display["Min"] = (
-        display["Min"]
-        .round(0)
-        .astype(int)
-    )
-
-
-    numeric_columns = [
-        "Fit",
-        "Pure9",
-        "Goal",
-        "Press",
-        "Duel",
-    ]
-
-
-    for column in numeric_columns:
-
-        display[column] = (
-            display[column]
-            .round(1)
-        )
-
-
-    print_section(
-        "JAISSLE LINE-LEADING NO. 9"
-    )
-
-
-    print(
-        display.to_string(
-            index=False,
-
-            formatters={
-                "Player":
-                    lambda x: (
-                        x[:27]
-                    ),
-
-                "Team":
-                    lambda x: (
-                        x[:13]
-                    ),
-
-                "Fit":
-                    "{:.1f}".format,
-
-                "Pure9":
-                    "{:.1f}".format,
-
-                "Goal":
-                    "{:.1f}".format,
-
-                "Press":
-                    "{:.1f}".format,
-
-                "Duel":
-                    "{:.1f}".format,
-            },
-
-            justify="left",
-        )
-    )
-
-
-def print_pure_9_table(
-    shortlist: pd.DataFrame,
-    top_n: int = 15,
-):
-
-    display = (
-        shortlist
-        .sort_values(
-            by=[
-                "pure_9_rank",
-                "striker_rank",
-            ]
-        )
-        [
-            [
-                "pure_9_rank",
-                "player",
-                "team",
-                "minutes",
-                "pure_9_fit_score",
-                "striker_fit_score",
-                "pure_9_scoring_score",
-                "pure_9_pressing_score",
-                "pure_9_duel_score",
-            ]
-        ]
-        .head(top_n)
-        .copy()
-    )
-
-
-    display.columns = [
-        "Rank",
-        "Player",
-        "Team",
-        "Min",
-        "Pure9",
-        "Fit",
-        "Score",
-        "Press",
-        "Duel",
-    ]
-
-
-    display["Min"] = (
-        display["Min"]
-        .round(0)
-        .astype(int)
-    )
-
-
-    numeric_columns = [
-        "Pure9",
-        "Fit",
-        "Score",
-        "Press",
-        "Duel",
-    ]
-
-
-    for column in numeric_columns:
-
-        display[column] = (
-            display[column]
-            .round(1)
-        )
-
-
-    print_section(
-        "PURE NO. 9 PROFILE"
-    )
-
-
-    print(
-        display.to_string(
-            index=False,
-
-            formatters={
-                "Player":
-                    lambda x: (
-                        x[:27]
-                    ),
-
-                "Team":
-                    lambda x: (
-                        x[:13]
-                    ),
-
-                "Pure9":
-                    "{:.1f}".format,
-
-                "Fit":
-                    "{:.1f}".format,
-
-                "Score":
-                    "{:.1f}".format,
-
-                "Press":
-                    "{:.1f}".format,
-
-                "Duel":
-                    "{:.1f}".format,
-            },
-
-            justify="left",
-        )
-    )
-
-
-def print_metric_table(
-    shortlist: pd.DataFrame,
-    top_n: int = 10,
-):
-
-    display = shortlist[
-        [
-            "player",
+        "raw_metrics": [
             "xg_per90",
             "shots_per90",
             "shots_in_box_per90",
             "goals_per90",
             "attacking_third_pressures_per90",
             "duels_per90",
-        ]
-    ].head(top_n).copy()
+        ],
+        "labels": [
+            "xG / 90",
+            "Shots / 90",
+            "Shots in Box / 90",
+            "Goals / 90",
+            "Att. 3rd Pressures / 90",
+            "Duels / 90",
+        ],
+    },
+
+    "fullback": {
+        "title": "Vertical Two-Way Fullback",
+        "shortlist_file": ROLE_ANALYSIS / "left_back_scouting_shortlist.parquet",
+        "score_column": "fullback_fit_score",
+        "metrics": [
+            "progressive_carries_percentile",
+            "carries_into_final_third_percentile",
+            "progressive_passes_percentile",
+            "passes_into_final_third_percentile",
+            "recoveries_percentile",
+            "duels_percentile",
+        ],
+        "raw_metrics": [
+            "progressive_carries_per90",
+            "carries_into_final_third_per90",
+            "progressive_passes_per90",
+            "passes_into_final_third_per90",
+            "recoveries_per90",
+            "duels_per90",
+        ],
+        "labels": [
+            "Progressive Carries / 90",
+            "Carries into Final 3rd / 90",
+            "Progressive Passes / 90",
+            "Passes into Final 3rd / 90",
+            "Recoveries / 90",
+            "Duels / 90",
+        ],
+    },
+
+    "controller": {
+        "title": "Controller / Progressive 6",
+        "shortlist_file": ROLE_ANALYSIS / "controller_scouting_shortlist.parquet",
+        "score_column": "controller_fit_score",
+        "metrics": [
+            "progressive_passes_percentile",
+            "passes_into_final_third_percentile",
+            "successful_passes_percentile",
+            "progressive_carries_percentile",
+            "recoveries_percentile",
+            "interceptions_percentile",
+        ],
+        "raw_metrics": [
+            "progressive_passes_per90",
+            "passes_into_final_third_per90",
+            "successful_passes_per90",
+            "progressive_carries_per90",
+            "recoveries_per90",
+            "interceptions_per90",
+        ],
+        "labels": [
+            "Progressive Passes / 90",
+            "Passes into Final 3rd / 90",
+            "Successful Passes / 90",
+            "Progressive Carries / 90",
+            "Recoveries / 90",
+            "Interceptions / 90",
+        ],
+    },
+}
 
 
-    display.columns = [
-        "Player",
-        "xG90",
-        "Sh90",
-        "BoxSh90",
-        "G90",
-        "Att3P90",
-        "Duel90",
-    ]
+# ---------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------
+
+def safe_filename(value: str) -> str:
+    value = value.strip().lower()
+    cleaned = []
+
+    for char in value:
+        if char.isalnum():
+            cleaned.append(char)
+        elif char in {" ", "-", "_"}:
+            cleaned.append("_")
+
+    result = "".join(cleaned)
+
+    while "__" in result:
+        result = result.replace("__", "_")
+
+    return result.strip("_")
 
 
-    print_section(
-        "TOP CANDIDATES — RAW PER 90"
+def wrap_label(label: str, width: int = 18) -> str:
+    return "\n".join(
+        textwrap.wrap(
+            label,
+            width=width,
+        )
     )
 
 
-    print(
-        display.to_string(
-            index=False,
+def validate_columns(
+    df: pd.DataFrame,
+    columns: list[str],
+    context: str,
+):
 
-            formatters={
-                "Player":
-                    lambda x: (
-                        x[:27]
-                    ),
+    missing = [
+        column
+        for column in columns
+        if column not in df.columns
+    ]
 
-                "xG90":
-                    "{:.2f}".format,
-
-                "Sh90":
-                    "{:.2f}".format,
-
-                "BoxSh90":
-                    "{:.2f}".format,
-
-                "G90":
-                    "{:.2f}".format,
-
-                "Att3P90":
-                    "{:.2f}".format,
-
-                "Duel90":
-                    "{:.2f}".format,
-            },
-
-            justify="left",
+    if missing:
+        raise ValueError(
+            f"\nMissing columns for {context}:\n"
+            + "\n".join(
+                f"  - {column}"
+                for column in missing
+            )
         )
+
+
+def get_player_row(
+    players: pd.DataFrame,
+    player_name: str,
+) -> pd.Series:
+
+    exact = players[
+        players["player"].str.casefold()
+        == player_name.casefold()
+    ]
+
+    if len(exact) == 1:
+        return exact.iloc[0]
+
+    contains = players[
+        players["player"]
+        .str.contains(
+            player_name,
+            case=False,
+            na=False,
+            regex=False,
+        )
+    ]
+
+    if len(contains) == 1:
+        return contains.iloc[0]
+
+    if len(contains) > 1:
+        raise ValueError(
+            f"\n'{player_name}' matched multiple players:\n"
+            + "\n".join(
+                f"  - {name}"
+                for name in contains["player"].tolist()
+            )
+        )
+
+    raise ValueError(
+        f"\nCould not find player: {player_name}"
+    )
+
+
+def load_role_data(
+    role: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+
+    if role not in ROLE_CONFIG:
+        raise ValueError(
+            f"Unknown role '{role}'."
+        )
+
+    config = ROLE_CONFIG[role]
+
+    if not PERCENTILES_FILE.exists():
+        raise FileNotFoundError(
+            f"Percentiles file not found:\n"
+            f"{PERCENTILES_FILE}"
+        )
+
+    if not config["shortlist_file"].exists():
+        raise FileNotFoundError(
+            f"Shortlist file not found:\n"
+            f"{config['shortlist_file']}"
+        )
+
+    players = pd.read_parquet(
+        PERCENTILES_FILE
+    )
+
+    shortlist = pd.read_parquet(
+        config["shortlist_file"]
+    )
+
+    validate_columns(
+        players,
+        [
+            "player",
+            "team",
+            "minutes",
+            *config["metrics"],
+            *config["raw_metrics"],
+        ],
+        f"{role} profile data",
+    )
+
+    validate_columns(
+        shortlist,
+        [
+            "player",
+            config["score_column"],
+        ],
+        f"{role} shortlist",
+    )
+
+    return players, shortlist, config
+
+
+def choose_players(
+    players: pd.DataFrame,
+    shortlist: pd.DataFrame,
+    config: dict,
+    top_n: int,
+    names: list[str] | None,
+) -> list[str]:
+
+    if names:
+        resolved = []
+
+        for name in names:
+            row = get_player_row(
+                players,
+                name,
+            )
+            resolved.append(
+                row["player"]
+            )
+
+        return resolved
+
+    return (
+        shortlist
+        .sort_values(
+            config["score_column"],
+            ascending=False,
+        )
+        .head(top_n)["player"]
+        .tolist()
+    )
+
+
+# ---------------------------------------------------------
+# Individual PyPizza
+# ---------------------------------------------------------
+
+def plot_player_pizza(
+    row: pd.Series,
+    config: dict,
+    output_dir: Path,
+):
+
+    labels = [
+        wrap_label(label, 17)
+        for label in config["labels"]
+    ]
+
+    values = [
+        int(round(float(row[column])))
+        if pd.notna(row[column])
+        else 0
+        for column in config["metrics"]
+    ]
+
+    raw_values = [
+        float(row[column])
+        if pd.notna(row[column])
+        else np.nan
+        for column in config["raw_metrics"]
+    ]
+
+    baker = PyPizza(
+        params=labels,
+        background_color="#F4F1EA",
+        straight_line_color="#222222",
+        straight_line_lw=1,
+        last_circle_color="#222222",
+        last_circle_lw=1,
+        other_circle_color="#B5B5B5",
+        other_circle_lw=0.6,
+        inner_circle_size=18,
+    )
+
+    fig, ax = baker.make_pizza(
+        values,
+        figsize=(10, 10),
+        param_location=108,
+        slice_colors=["#2F6B4F"] * len(values),
+        value_colors=["#F4F1EA"] * len(values),
+        value_bck_colors=["#1D1D1D"] * len(values),
+        kwargs_slices={
+            "edgecolor": "#F4F1EA",
+            "linewidth": 1.8,
+        },
+        kwargs_params={
+            "color": "#202020",
+            "fontsize": 10,
+            "va": "center",
+        },
+        kwargs_values={
+            "color": "#F4F1EA",
+            "fontsize": 10,
+            "bbox": {
+                "edgecolor": "#1D1D1D",
+                "facecolor": "#1D1D1D",
+                "boxstyle": "round,pad=0.25",
+                "lw": 1,
+            },
+        },
+    )
+
+    fig.text(
+        0.5,
+        0.975,
+        row["player"],
+        ha="center",
+        va="top",
+        fontsize=20,
+        fontweight="bold",
+        color="#202020",
+    )
+
+    fig.text(
+        0.5,
+        0.945,
+        (
+            f"{config['title']} | "
+            f"{row['team']} | "
+            f"{float(row['minutes']):.0f} min"
+        ),
+        ha="center",
+        va="top",
+        fontsize=11,
+        color="#4A4A4A",
+    )
+
+    fig.text(
+        0.5,
+        0.918,
+        "Percentiles vs observed positional peers",
+        ha="center",
+        va="top",
+        fontsize=9,
+        color="#6A6A6A",
+    )
+
+    # Raw per-90 footer
+    raw_text = "   |   ".join(
+        (
+            f"{label.replace(chr(10), ' ')}: "
+            f"{raw:.2f}"
+            if pd.notna(raw)
+            else f"{label.replace(chr(10), ' ')}: —"
+        )
+        for label, raw in zip(
+            labels,
+            raw_values,
+        )
+    )
+
+    fig.text(
+        0.5,
+        0.035,
+        raw_text,
+        ha="center",
+        va="bottom",
+        fontsize=8,
+        color="#444444",
+        wrap=True,
+    )
+
+    output_file = (
+        output_dir
+        / f"{safe_filename(row['player'])}_pizza.png"
+    )
+
+    fig.savefig(
+        output_file,
+        dpi=220,
+        bbox_inches="tight",
+        facecolor="#F4F1EA",
+    )
+
+    plt.close(fig)
+
+    return output_file
+
+
+# ---------------------------------------------------------
+# Two-Player Radar Comparison
+# ---------------------------------------------------------
+
+def plot_player_comparison(
+    row_a: pd.Series,
+    row_b: pd.Series,
+    config: dict,
+    output_dir: Path,
+):
+
+    params = [
+        wrap_label(label, 16)
+        for label in config["labels"]
+    ]
+
+    min_range = [0] * len(params)
+    max_range = [100] * len(params)
+
+    radar = Radar(
+        params=params,
+        min_range=min_range,
+        max_range=max_range,
+        num_rings=5,
+        ring_width=1,
+        center_circle_radius=1,
+    )
+
+    values_a = [
+        float(row_a[column])
+        if pd.notna(row_a[column])
+        else 0.0
+        for column in config["metrics"]
+    ]
+
+    values_b = [
+        float(row_b[column])
+        if pd.notna(row_b[column])
+        else 0.0
+        for column in config["metrics"]
+    ]
+
+    fig, ax = radar.setup_axis(
+        figsize=(10, 10),
+        facecolor="#F4F1EA",
+    )
+
+    radar.draw_circles(
+        ax=ax,
+        facecolor="#E2DDD4",
+        edgecolor="#C6C0B6",
+    )
+
+    radar.draw_radar_compare(
+        values_a,
+        values_b,
+        ax=ax,
+        kwargs_radar={
+            "facecolor": "#2F6B4F",
+            "alpha": 0.40,
+            "edgecolor": "#2F6B4F",
+            "linewidth": 2,
+        },
+        kwargs_compare={
+            "facecolor": "#9A6B3F",
+            "alpha": 0.35,
+            "edgecolor": "#9A6B3F",
+            "linewidth": 2,
+        },
+    )
+
+    radar.draw_range_labels(
+        ax=ax,
+        fontsize=8,
+        color="#666666",
+    )
+
+    radar.draw_param_labels(
+        ax=ax,
+        fontsize=10,
+        color="#222222",
+    )
+
+    fig.text(
+        0.5,
+        0.965,
+        f"{config['title']} Comparison",
+        ha="center",
+        va="top",
+        fontsize=19,
+        fontweight="bold",
+        color="#202020",
+    )
+
+    fig.text(
+        0.5,
+        0.935,
+        "Percentiles vs observed positional peers",
+        ha="center",
+        va="top",
+        fontsize=9,
+        color="#666666",
+    )
+
+    fig.text(
+        0.28,
+        0.07,
+        f"{row_a['player']} — {row_a['team']}",
+        ha="center",
+        fontsize=10,
+        fontweight="bold",
+        color="#2F6B4F",
+    )
+
+    fig.text(
+        0.72,
+        0.07,
+        f"{row_b['player']} — {row_b['team']}",
+        ha="center",
+        fontsize=10,
+        fontweight="bold",
+        color="#9A6B3F",
+    )
+
+    output_file = (
+        output_dir
+        / (
+            "comparison_"
+            f"{safe_filename(row_a['player'])}_vs_"
+            f"{safe_filename(row_b['player'])}.png"
+        )
+    )
+
+    fig.savefig(
+        output_file,
+        dpi=220,
+        bbox_inches="tight",
+        facecolor="#F4F1EA",
+    )
+
+    plt.close(fig)
+
+    return output_file
+
+
+# ---------------------------------------------------------
+# Terminal Summary
+# ---------------------------------------------------------
+
+def print_summary(
+    players: pd.DataFrame,
+    names: list[str],
+    config: dict,
+):
+
+    rows = []
+
+    for name in names:
+
+        row = get_player_row(
+            players,
+            name,
+        )
+
+        rows.append(
+            {
+                "Player": row["player"],
+                "Team": row["team"],
+                "Min": int(
+                    round(
+                        float(row["minutes"])
+                    )
+                ),
+                **{
+                    label: round(
+                        float(row[column]),
+                        1,
+                    )
+                    for label, column in zip(
+                        config["labels"],
+                        config["metrics"],
+                    )
+                },
+            }
+        )
+
+    summary = pd.DataFrame(rows)
+
+    print()
+    print(summary.to_string(index=False))
+
+
+# ---------------------------------------------------------
+# Role Runner
+# ---------------------------------------------------------
+
+def run_role(
+    role: str,
+    top_n: int,
+    names: list[str] | None,
+    compare: bool,
+):
+
+    players, shortlist, config = load_role_data(
+        role
+    )
+
+    selected = choose_players(
+        players=players,
+        shortlist=shortlist,
+        config=config,
+        top_n=top_n,
+        names=names,
+    )
+
+    output_dir = (
+        VISUALIZATIONS
+        / role
+    )
+
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    print()
+    print("=" * 90)
+    print(
+        f"{config['title']} PROFILES".center(90)
+    )
+    print("=" * 90)
+
+    rows = []
+
+    for player_name in selected:
+
+        row = get_player_row(
+            players,
+            player_name,
+        )
+
+        rows.append(row)
+
+        output_file = plot_player_pizza(
+            row=row,
+            config=config,
+            output_dir=output_dir,
+        )
+
+        print(
+            f"Created: {output_file.name}"
+        )
+
+    if compare:
+
+        if len(rows) != 2:
+            print(
+                "\nComparison radar skipped: "
+                "--compare requires exactly 2 selected players."
+            )
+
+        else:
+            comparison = plot_player_comparison(
+                row_a=rows[0],
+                row_b=rows[1],
+                config=config,
+                output_dir=output_dir,
+            )
+
+            print(
+                f"Created: {comparison.name}"
+            )
+
+    print_summary(
+        players=players,
+        names=selected,
+        config=config,
+    )
+
+    print()
+    print(
+        f"Saved to: {output_dir}"
     )
 
 
@@ -793,88 +737,86 @@ def print_metric_table(
 
 def main():
 
-    validate_weights()
-
-
-    # -----------------------------------------------------
-    # Load
-    # -----------------------------------------------------
-
-    players = pd.read_parquet(
-        INPUT_FILE
-    )
-
-
-    print(
-        f"Loaded {len(players):,} "
-        "eligible player rows"
-    )
-
-
-    # -----------------------------------------------------
-    # Build shortlist
-    # -----------------------------------------------------
-
-    shortlist = (
-        build_striker_shortlist(
-            players
+    parser = argparse.ArgumentParser(
+        description=(
+            "Create football scouting profiles with "
+            "mplsoccer PyPizza and Radar charts."
         )
     )
 
-
-    # -----------------------------------------------------
-    # Save
-    # -----------------------------------------------------
-
-    OUTPUT_FILE.parent.mkdir(
-        parents=True,
-        exist_ok=True,
+    parser.add_argument(
+        "--role",
+        choices=[
+            "striker",
+            "fullback",
+            "controller",
+            "all",
+        ],
+        default="all",
+        help=(
+            "Role to generate. "
+            "Default: all."
+        ),
     )
 
-
-    shortlist.to_parquet(
-        OUTPUT_FILE,
-        index=False,
+    parser.add_argument(
+        "--top-n",
+        type=int,
+        default=5,
+        help=(
+            "Generate profiles for the top N candidates. "
+            "Default: 5."
+        ),
     )
 
-
-    # -----------------------------------------------------
-    # Terminal Output
-    # -----------------------------------------------------
-
-    print_role_table(
-        shortlist,
-        top_n=15,
+    parser.add_argument(
+        "--players",
+        nargs="+",
+        default=None,
+        help=(
+            "Specific player names. "
+            "Only valid when a single role is selected."
+        ),
     )
 
-
-    print_pure_9_table(
-        shortlist,
-        top_n=15,
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help=(
+            "Create a comparison radar when exactly "
+            "two players are selected."
+        ),
     )
 
+    args = parser.parse_args()
 
-    print_metric_table(
-        shortlist,
-        top_n=10,
-    )
+    if args.players and args.role == "all":
+        raise ValueError(
+            "--players requires a specific --role."
+        )
 
+    if args.role == "all":
 
-    print_section(
-        "OUTPUT"
-    )
+        for role in [
+            "striker",
+            "fullback",
+            "controller",
+        ]:
+            run_role(
+                role=role,
+                top_n=args.top_n,
+                names=None,
+                compare=False,
+            )
 
+    else:
 
-    print(
-        f"Candidates saved: "
-        f"{len(shortlist)}"
-    )
-
-    print(
-        f"File: {OUTPUT_FILE}"
-    )
-
-    print()
+        run_role(
+            role=args.role,
+            top_n=args.top_n,
+            names=args.players,
+            compare=args.compare,
+        )
 
 
 if __name__ == "__main__":

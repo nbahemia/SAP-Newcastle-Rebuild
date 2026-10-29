@@ -8,10 +8,10 @@ import pandas as pd
 # Paths
 # --------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw"
-PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
+RAW_DATA_DIR = PROJECT_ROOT / "data" / "raw" / "statsbomb"
+PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed" / "statsbomb"
 
 PROCESSED_DATA_DIR.mkdir(
     parents=True,
@@ -28,7 +28,7 @@ lineups = pd.read_parquet(
 )
 
 events = pd.read_parquet(
-    RAW_DATA_DIR / "events.parquet"
+    RAW_DATA_DIR /  "events.parquet"
 )
 
 print(f"Loaded {len(lineups):,} lineup rows")

@@ -7,17 +7,17 @@ import numpy as np
 # Paths
 # ---------------------------------------------------------
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-RAW = PROJECT_ROOT / "data" / "raw"
-PROCESSED = PROJECT_ROOT / "data" / "processed"
+RAW = PROJECT_ROOT / "data" / "raw" / "statsbomb"
+PROCESSED = PROJECT_ROOT / "data" / "processed" / "statsbomb"
 
 LINEUPS_FILE = RAW / "lineups.parquet"
 MINUTES_FILE = PROCESSED / "player_minutes.parquet"
 SEASON_FILE = PROCESSED / "player_season_metrics.parquet"
 
 POSITION_MINUTES_OUTPUT = (
-    PROCESSED / "player_position_minutes.parquet"
+    PROCESSED /  "player_position_minutes.parquet"
 )
 
 SEASON_WITH_POSITIONS_OUTPUT = (

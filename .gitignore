@@ -2,8 +2,10 @@
 __pycache__/
 *.pyc
 
-data/raw/
-data/processed/
+data/raw
+data/processed
+data/external
+data/external/transfermarkt/transfermarkt-datasets.duckdb
 
 visualizations/
 downloaded_files/

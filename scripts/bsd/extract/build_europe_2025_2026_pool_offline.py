@@ -87,51 +87,45 @@ LEAGUES = [
 
 
 STAT_ALIASES = {
-    "goals": ["goals", "attacking_goals"],
-    "assists": ["assists", "attacking_assists"],
-    "xg": ["xg", "expected_goals", "attacking_expected_goals"],
-    "xa": ["xa", "expected_assists", "attacking_expected_assists"],
-    "xgot": ["xgot", "expected_goals_on_target"],
-    "shots": ["shots", "total_shots", "attacking_total_shots"],
-    "shots_on_target": ["shots_on_target", "attacking_shots_on_target"],
-    "headed_shots": ["headed_shots", "attacking_headed_shots"],
-    "key_passes": ["key_passes", "chances_created", "passing_key_passes"],
-    "big_chances_created": ["big_chances_created", "attacking_big_chances_created"],
-    "successful_passes": ["successful_passes", "accurate_passes", "passing_accurate_passes"],
-    "total_passes": ["total_passes", "passes", "passing_total_passes"],
-    "accurate_opposition_half_passes": [
-        "accurate_opposition_half_passes",
-        "passing_accurate_opposition_half_passes",
-    ],
-    "total_long_balls": ["total_long_balls", "long_balls", "passing_total_long_balls"],
-    "accurate_long_balls": ["accurate_long_balls", "passing_accurate_long_balls"],
-    "total_crosses": ["total_crosses", "crosses", "passing_total_crosses"],
-    "accurate_crosses": ["accurate_crosses", "successful_crosses", "passing_accurate_crosses"],
-    "line_breaking_passes": ["line_breaking_passes", "passing_line_breaking_passes"],
-    "touches": ["touches", "possession_touches"],
-    "box_touches": [
-        "touches_in_opposition_box",
-        "touches_opposition_box",
-        "box_touches",
-    ],
-    "progressive_carries": ["progressive_carries"],
+    "goals": ["goals"],
+    "assists": ["goal_assist", "assists"],
+    "xg": ["expected_goals", "xg"],
+    "xa": ["expected_assists", "xa"],
+    "xgot": ["expected_goals_on_target", "xgot"],
+    "shots": ["total_shots", "shots"],
+    "shots_on_target": ["shots_on_target"],
+    "key_passes": ["key_pass", "key_passes"],
+    "big_chances_created": ["big_chance_created", "big_chances_created"],
+
+    "successful_passes": ["accurate_pass", "successful_passes", "accurate_passes"],
+    "total_passes": ["total_pass", "total_passes"],
+    "accurate_opposition_half_passes": ["accurate_opposition_half_passes"],
+    "total_long_balls": ["total_long_balls"],
+    "accurate_long_balls": ["accurate_long_balls"],
+    "total_crosses": ["total_cross", "total_crosses"],
+    "accurate_crosses": ["accurate_cross", "accurate_crosses"],
+
+    "touches": ["touches"],
+    "progressive_carries": ["progressive_ball_carries_count", "progressive_carries"],
     "progressive_carry_distance": [
         "total_progressive_ball_carries_distance",
         "progressive_carry_distance",
     ],
-    "successful_dribbles": ["successful_dribbles"],
-    "total_dribbles": ["total_dribbles", "dribbles_attempted"],
-    "duels_won": ["duels_won"],
-    "total_duels": ["total_duels", "duels"],
-    "aerials_won": ["aerials_won", "aerial_duels_won"],
-    "total_aerials": ["total_aerials", "aerial_duels"],
-    "recoveries": ["recoveries", "defending_recoveries"],
-    "interceptions": ["interceptions", "defending_interceptions"],
-    "tackles_won": ["tackles_won", "successful_tackles"],
-    "total_tackles": ["total_tackles", "tackles"],
+    "successful_dribbles": ["won_contest", "successful_dribbles"],
+    "total_dribbles": ["total_contest", "total_dribbles"],
+
+    "duels_won": ["duel_won", "duels_won"],
+    "total_duels": ["duel_won", "duel_lost"],  # handled specially below
+    "aerials_won": ["aerial_won", "aerials_won"],
+    "total_aerials": ["aerial_won", "aerial_lost"],  # handled specially below
+    "recoveries": ["ball_recovery", "recoveries"],
+    "interceptions": ["interception", "interceptions"],
+    "tackles_won": ["won_tackle", "tackles_won"],
+    "total_tackles": ["total_tackle", "total_tackles"],
+
     "possession_lost": ["possession_lost"],
     "dispossessed": ["dispossessed"],
-    "fouls_won": ["fouls_won"],
+    "fouls_won": ["was_fouled", "fouls_won"],
 }
 
 
@@ -369,6 +363,17 @@ def canonicalize_player_row(
 
     for canonical, aliases in STAT_ALIASES.items():
         output[canonical] = pick_value(row, aliases)
+
+    # BSD stores duel/aerial totals as separate won/lost columns.
+    duel_won = row.get("duel_won")
+    duel_lost = row.get("duel_lost")
+    if duel_won is not None or duel_lost is not None:
+        output["total_duels"] = (duel_won or 0) + (duel_lost or 0)
+
+    aerial_won = row.get("aerial_won")
+    aerial_lost = row.get("aerial_lost")
+    if aerial_won is not None or aerial_lost is not None:
+        output["total_aerials"] = (aerial_won or 0) + (aerial_lost or 0)
 
     return output
 
@@ -695,7 +700,10 @@ def build_season_tables(
     ]
 
     sum_sql = ",\n                ".join(
-        f"SUM(COALESCE({metric}, 0)) AS {metric}"
+        (
+            f"CASE WHEN COUNT({metric}) > 0 "
+            f"THEN SUM({metric}) ELSE NULL END AS {metric}"
+        )
         for metric in metric_sums
     )
 

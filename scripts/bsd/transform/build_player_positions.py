@@ -60,14 +60,16 @@ BROAD_POSITION_MAP = {
 # Tunable role thresholds
 # ---------------------------------------------------------
 
-DEFENDER_WIDE_DISTANCE = 18.0
-MIDFIELDER_WIDE_DISTANCE = 20.0
-FORWARD_WIDE_DISTANCE = 17.0
+DEFENDER_WIDE_DISTANCE = 24.0
+FULLBACK_MIN_X = 38
 
+MIDFIELDER_WIDE_DISTANCE = 20.0
 ATTACKING_MID_X = 60.0
 
-SIDE_LEFT_MAX = 42.0
-SIDE_RIGHT_MIN = 58.0
+FORWARD_WIDE_DISTANCE = 17.0
+
+SIDE_LEFT_MAX = 38.0
+SIDE_RIGHT_MIN = 62.0
 
 
 # ---------------------------------------------------------
@@ -164,8 +166,8 @@ def classify_tactical_role(
     if broad_position == "DEF":
 
         if (
-            wide_distance
-            >= DEFENDER_WIDE_DISTANCE
+            wide_distance >= DEFENDER_WIDE_DISTANCE
+            and x_attacking >= FULLBACK_MIN_X
         ):
             return "FB/WB"
 

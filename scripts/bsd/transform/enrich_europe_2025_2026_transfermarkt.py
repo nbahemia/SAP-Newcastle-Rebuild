@@ -29,6 +29,13 @@ TM_COMPETITIONS = {
     "serie_a": "IT1",
     "ligue_1": "FR1",
     "eredivisie": "NL1",
+    "primeira_liga": "PO1",
+    "belgian_pro_league": "BE1",
+    "austrian_bundesliga": "A1",
+    "danish_superliga": "DK1",
+    "swiss_super_league": "C1",
+    "scottish_premiership": "SC1",
+    "turkish_super_lig": "TR1",
 }
 TM_SEASON = 2025
 

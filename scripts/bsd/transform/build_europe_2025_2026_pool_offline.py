@@ -165,7 +165,30 @@ def flatten_dict(obj: dict, prefix: str = "") -> dict:
     return out
 
 
+def first_flat_value(flat: dict, aliases: list[str]):
+    """Find an exact or suffix-matching flattened field."""
+    for alias in aliases:
+        if alias in flat:
+            return flat[alias]
+
+    for alias in aliases:
+        suffix = "_" + alias
+        for key, value in flat.items():
+            if key.endswith(suffix):
+                return value
+
+    return None
+
+
 def find_player_rows(node: Any, context: dict | None = None) -> list[dict]:
+    """
+    Recursively locate player-stat records.
+
+    Important: BSD responses are not perfectly uniform across competitions.
+    Some leagues expose player_id/player_name at the top level, while others
+    nest them under a `player` object. We therefore flatten each dictionary
+    *before* deciding whether it is a player row.
+    """
     context = dict(context or {})
     rows = []
 
@@ -179,21 +202,76 @@ def find_player_rows(node: Any, context: dict | None = None) -> list[dict]:
 
     local = dict(context)
 
-    for key in ["team_id", "team_name", "is_home", "side"]:
+    # Preserve common team/side context from parent containers.
+    flat_here = flatten_dict(node)
+
+    team_id = first_flat_value(
+        flat_here,
+        ["team_id", "team_team_id", "team_id_id"],
+    )
+    team_name = first_flat_value(
+        flat_here,
+        ["team_name", "team_team_name"],
+    )
+
+    if team_id is not None:
+        local["team_id"] = team_id
+    if team_name:
+        local["team_name"] = team_name
+
+    for key in ["is_home", "side"]:
         if key in node and not isinstance(node[key], (dict, list)):
             local[key] = node[key]
 
-    if "player_id" in node and (
-        "minutes_played" in node or "minutes" in node
-    ):
-        flat = flatten_dict(node)
+    player_id = first_flat_value(
+        flat_here,
+        ["player_id", "player_player_id", "id"],
+    )
+    minutes = first_flat_value(
+        flat_here,
+        ["minutes_played", "minutes", "statistics_minutes_played"],
+    )
+
+    # Treat this dictionary as a player-stat record only when both identity
+    # and minutes exist somewhere in the flattened object.
+    if player_id is not None and minutes is not None:
+        flat = dict(flat_here)
 
         for key, value in local.items():
             flat.setdefault(key, value)
 
+        # Canonical identity fields used later by canonicalize_player_row().
+        flat.setdefault("player_id", player_id)
+
+        player_name = first_flat_value(
+            flat,
+            [
+                "player_name",
+                "player_player_name",
+                "name",
+                "full_name",
+            ],
+        )
+        if player_name:
+            flat.setdefault("player_name", player_name)
+
+        position = first_flat_value(
+            flat,
+            [
+                "position",
+                "player_position",
+                "pos",
+            ],
+        )
+        if position is not None:
+            flat.setdefault("position", position)
+
+        flat.setdefault("minutes", minutes)
+
         rows.append(flat)
         return rows
 
+    # Not a terminal player row: recurse deeper.
     for key, value in node.items():
         child = dict(local)
         key_n = norm(key)
@@ -284,12 +362,27 @@ def canonicalize_player_row(
         "season_name": league["season_name"],
         "team_id": team_id,
         "team_name": team_name,
-        "player_id": row.get("player_id"),
+        "player_id": (
+            row.get("player_id")
+            or first_flat_value(
+                row,
+                ["player_player_id", "id"],
+            )
+        ),
         "player_name": (
             row.get("player_name")
-            or row.get("name")
+            or first_flat_value(
+                row,
+                ["player_player_name", "name", "full_name"],
+            )
         ),
-        "position": row.get("position"),
+        "position": (
+            row.get("position")
+            or first_flat_value(
+                row,
+                ["player_position", "pos"],
+            )
+        ),
         "minutes": (
             row.get("minutes_played")
             if row.get("minutes_played") is not None
@@ -424,12 +517,57 @@ def extract_from_cache():
             print(f"WARNING: missing {event_dir}")
             continue
 
-        files = sorted(
+        all_files = sorted(
             event_dir.glob("*.json"),
             key=lambda p: int(p.stem),
         )
 
-        print(f"Cached matches: {len(files)}")
+        expected_season_id = league.get("season_id")
+        original_six = {
+            "premier_league", "bundesliga", "la_liga",
+            "serie_a", "ligue_1", "eredivisie",
+        }
+
+        files = []
+        skipped_wrong_season = 0
+        skipped_missing_meta = 0
+
+        for candidate in all_files:
+            if expected_season_id is None or league["slug"] in original_six:
+                files.append(candidate)
+                continue
+
+            try:
+                probe = json.loads(candidate.read_text(encoding="utf-8"))
+            except Exception:
+                skipped_wrong_season += 1
+                continue
+
+            cache_meta = probe.get("cache_meta") or {}
+            file_season_id = cache_meta.get("season_id")
+
+            if file_season_id is None:
+                skipped_missing_meta += 1
+                continue
+
+            try:
+                matches_season = int(file_season_id) == int(expected_season_id)
+            except (TypeError, ValueError):
+                matches_season = str(file_season_id) == str(expected_season_id)
+
+            if matches_season:
+                files.append(candidate)
+            else:
+                skipped_wrong_season += 1
+
+        print(f"Cached files present: {len(all_files)}")
+        print(f"25/26 season files used: {len(files)}")
+        if skipped_wrong_season or skipped_missing_meta:
+            print(
+                "Skipped stale/unverifiable cache files: "
+                f"wrong season={skipped_wrong_season}, "
+                f"missing cache_meta={skipped_missing_meta}"
+            )
 
         league_player_rows = 0
         league_positive_rows = 0
@@ -510,6 +648,47 @@ def extract_from_cache():
     player_match_df = pd.DataFrame(all_player_match)
     avg_pos_df = pd.DataFrame(all_avg_positions)
 
+    # Average-position payloads usually carry a reliable player name even when
+    # the player-stat payload nests identity differently. Use event_id+player_id
+    # as a safe fallback rather than ever joining on missing names downstream.
+    if (
+        not player_match_df.empty
+        and not avg_pos_df.empty
+        and {"event_id", "player_id", "player_name"}.issubset(avg_pos_df.columns)
+        and {"event_id", "player_id"}.issubset(player_match_df.columns)
+    ):
+        name_map = (
+            avg_pos_df[
+                ["event_id", "player_id", "player_name"]
+            ]
+            .dropna(subset=["player_id", "player_name"])
+            .drop_duplicates(["event_id", "player_id"])
+            .rename(columns={"player_name": "_avg_player_name"})
+        )
+
+        player_match_df = player_match_df.merge(
+            name_map,
+            on=["event_id", "player_id"],
+            how="left",
+        )
+
+        if "player_name" not in player_match_df.columns:
+            player_match_df["player_name"] = player_match_df["_avg_player_name"]
+        else:
+            missing_name = (
+                player_match_df["player_name"].isna()
+                | player_match_df["player_name"].astype(str).str.strip().eq("")
+                | player_match_df["player_name"].astype(str).str.lower().eq("none")
+            )
+            player_match_df.loc[missing_name, "player_name"] = (
+                player_match_df.loc[missing_name, "_avg_player_name"]
+            )
+
+        player_match_df = player_match_df.drop(
+            columns=["_avg_player_name"],
+            errors="ignore",
+        )
+
     if player_match_df.empty:
         raise RuntimeError(
             "No cached player rows found. "
@@ -559,6 +738,45 @@ def build_season_tables(
 
     print()
     print(f"Positive-minute rows retained: {len(player_match):,}")
+
+    # Fail loudly if player identity is malformed. Null-name joins in pandas can
+    # otherwise create believable-looking but completely invalid scouting rows.
+    name_missing = (
+        player_match["player_name"].isna()
+        | player_match["player_name"].astype(str).str.strip().eq("")
+        | player_match["player_name"].astype(str).str.lower().isin({"none", "nan"})
+    )
+    missing_n = int(name_missing.sum())
+    missing_pct = (missing_n / len(player_match) * 100.0) if len(player_match) else 0.0
+
+    print(
+        f"Player-name coverage: {len(player_match) - missing_n:,}/"
+        f"{len(player_match):,} ({100.0 - missing_pct:.2f}%)"
+    )
+
+    if missing_pct > 1.0:
+        bad_leagues = (
+            player_match.loc[name_missing]
+            .groupby("league_slug")
+            .size()
+            .sort_values(ascending=False)
+        )
+        raise RuntimeError(
+            "Player identity extraction failed: "
+            f"{missing_n:,} positive-minute rows ({missing_pct:.2f}%) "
+            "have no player_name. Refusing to build a corrupted scouting pool.\n"
+            f"Missing-name rows by league:\n{bad_leagues.to_string()}"
+        )
+
+    duplicate_key = player_match.duplicated(
+        ["league_slug", "event_id", "player_id", "team_id"],
+        keep=False,
+    )
+    if duplicate_key.any():
+        print(
+            "WARNING: duplicate player-match identity rows: "
+            f"{int(duplicate_key.sum()):,}"
+        )
 
     ph = position_history.dropna(
         subset=["player_id", "position_group"]
@@ -728,9 +946,21 @@ def build_season_tables(
             * 100
         )
 
+    season_name_missing = (
+        season["player_name"].isna()
+        | season["player_name"].astype(str).str.strip().eq("")
+        | season["player_name"].astype(str).str.lower().isin({"none", "nan"})
+    )
+    if season_name_missing.any():
+        print(
+            "WARNING: season rows still missing player names:",
+            int(season_name_missing.sum()),
+        )
+
     eligible = season[
         (season["minutes"] >= MIN_MINUTES)
         & season["position_group"].notna()
+        & ~season_name_missing
     ].copy()
 
     metric_cols = [

@@ -356,7 +356,7 @@ def prepare_transfermarkt(tm: pd.DataFrame) -> pd.DataFrame:
 
     result["market_value_eur_m"] = infer_value_millions(out[value_col]) if value_col else np.nan
     result["height_cm"] = numeric_series(out, height_col)
-    result["club_name"] = out[club_col] if club_col else pd.NA
+    result["current_club_name"] = out[club_col] if club_col else pd.NA
     result["tm_position"] = out[tm_position_col] if tm_position_col else pd.NA
     result["tm_sub_position"] = out[tm_sub_position_col] if tm_sub_position_col else pd.NA
 
@@ -369,6 +369,36 @@ def prepare_transfermarkt(tm: pd.DataFrame) -> pd.DataFrame:
     result.attrs["detected_tm_sub_position_col"] = tm_sub_position_col
 
     return result
+
+
+def preserve_historical_club(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Keep the club associated with the BSD 2025/26 statistical season separate
+    from Transfermarkt's current club.
+
+    BSD schemas have varied, so inspect several team/club field names.
+    """
+    out = df.copy()
+
+    candidates = [
+        "historical_club_name",
+        "team_name",
+        "club_name",
+        "team",
+        "club",
+        "squad_name",
+        "squad",
+        "team_display_name",
+    ]
+
+    historical_source = first_nonempty_existing(out, candidates)
+
+    if historical_source:
+        out["historical_club_name"] = out[historical_source]
+    elif "historical_club_name" not in out.columns:
+        out["historical_club_name"] = pd.NA
+
+    return out
 
 
 def merge_transfermarkt(hist: pd.DataFrame, tm: pd.DataFrame) -> pd.DataFrame:
@@ -407,7 +437,7 @@ def merge_transfermarkt(hist: pd.DataFrame, tm: pd.DataFrame) -> pd.DataFrame:
             fallback = name_league_merge(out.loc[missing].copy(), tm2)
             for col in [
                 "tm_player_name", "age", "market_value_eur_m",
-                "height_cm", "club_name", "tm_league", "tm_position", "tm_sub_position",
+                "height_cm", "current_club_name", "tm_league", "tm_position", "tm_sub_position",
             ]:
                 if col in fallback.columns:
                     merged.loc[missing, col] = fallback[col].values
@@ -435,18 +465,24 @@ def name_league_merge(hist: pd.DataFrame, tm2: pd.DataFrame) -> pd.DataFrame:
     # Second pass: exact normalized name regardless of league.
     missing = merged["tm_player_name"].isna()
     if missing.any():
+        # Only permit name-only fallback when the normalized name is unique.
+        # This avoids false joins for abbreviated names such as "O. Kökçü".
+        name_counts = tm2["tm_name_norm"].value_counts()
+        unique_names = set(name_counts[name_counts == 1].index)
+
         name_only = (
-            tm2.sort_values("market_value_eur_m", ascending=False)
-               .drop_duplicates("tm_name_norm")
-               .set_index("tm_name_norm")
+            tm2[tm2["tm_name_norm"].isin(unique_names)]
+            .set_index("tm_name_norm")
         )
+
         for idx in merged.index[missing]:
             key = merged.at[idx, "_name_norm"]
             if key in name_only.index:
                 row = name_only.loc[key]
                 for col in [
                     "tm_player_name", "age", "market_value_eur_m",
-                    "height_cm", "club_name", "tm_league", "tm_position", "tm_sub_position",
+                    "height_cm", "current_club_name", "tm_league",
+                    "tm_position", "tm_sub_position",
                 ]:
                     if col in row.index:
                         merged.at[idx, col] = row[col]
@@ -460,45 +496,68 @@ def name_league_merge(hist: pd.DataFrame, tm2: pd.DataFrame) -> pd.DataFrame:
 # ======================================================================================
 
 def natural_position_code(row) -> str:
-    sub = norm_text(row.get("tm_sub_position", ""))
-    pos = norm_text(row.get("tm_position", ""))
+    """
+    Resolve a compact natural-position code.
 
-    value = f"{sub} {pos}".strip()
+    Prefer Transfermarkt sub-position/position when it maps cleanly.
+    If Transfermarkt provides a generic or unfamiliar label, fall back to
+    BSD's inferred position_group rather than falsely excluding the player.
+    """
+    raw_values = [
+        row.get("tm_sub_position", pd.NA),
+        row.get("tm_position", pd.NA),
+    ]
 
-    if any(x in value for x in ["centre back", "center back", "central defender"]):
-        return "CB"
+    for raw in raw_values:
+        if pd.isna(raw) or not str(raw).strip():
+            continue
 
-    if any(
-        x in value
-        for x in [
-            "left back", "right back", "full back", "fullback",
-            "wing back", "wingback",
-        ]
-    ):
-        return "FB/WB"
+        value = norm_text(raw)
 
-    if "defensive midfield" in value:
-        return "DM"
+        if any(x in value for x in ["centre back", "center back", "central defender"]):
+            return "CB"
 
-    if "central midfield" in value or "centre midfield" in value:
-        return "CM"
+        if any(
+            x in value
+            for x in [
+                "left back", "right back", "full back", "fullback",
+                "wing back", "wingback",
+            ]
+        ):
+            return "FB/WB"
 
-    if "attacking midfield" in value:
-        return "AM"
+        if "defensive midfield" in value:
+            return "DM"
 
-    if any(x in value for x in ["left winger", "right winger", "winger"]):
-        return "W"
+        if "central midfield" in value or "centre midfield" in value:
+            return "CM"
 
-    if "second striker" in value:
-        return "SS"
+        if "attacking midfield" in value:
+            return "AM"
 
-    if any(x in value for x in ["centre forward", "center forward", "striker"]):
-        return "ST"
+        if any(x in value for x in ["left winger", "right winger", "winger"]):
+            return "W"
 
+        if "second striker" in value:
+            return "SS"
+
+        if any(x in value for x in ["centre forward", "center forward", "striker"]):
+            return "ST"
+
+    # Transfermarkt may only say "Midfield", "Attack", etc.
+    # BSD position_group is more useful than an unknown TM category.
     fallback = str(row.get("position_group", "")).strip()
-    if fallback == "DM/CM":
-        return "CM"
-    return fallback
+
+    fallback_map = {
+        "CB": "CB",
+        "FB/WB": "FB/WB",
+        "DM/CM": "CM",
+        "AM": "AM",
+        "W": "W",
+        "ST": "ST",
+        "SS": "SS",
+    }
+    return fallback_map.get(fallback, fallback)
 
 
 def natural_position_label(row) -> str:
@@ -533,8 +592,70 @@ def role_position_eligible(row, role_key: str) -> bool:
 
 
 # ======================================================================================
+# DATA INTEGRITY
+# ======================================================================================
+
+def validate_player_identity(df: pd.DataFrame, label: str) -> None:
+    if "player_name" not in df.columns:
+        raise RuntimeError(f"{label}: missing player_name column")
+
+    bad = (
+        df["player_name"].isna()
+        | df["player_name"].astype(str).str.strip().eq("")
+        | df["player_name"].astype(str).str.lower().isin({"none", "nan"})
+    )
+
+    bad_n = int(bad.sum())
+    bad_pct = bad_n / len(df) * 100.0 if len(df) else 0.0
+
+    print(
+        f"{label} player-name coverage: "
+        f"{len(df) - bad_n:,}/{len(df):,} "
+        f"({100.0 - bad_pct:.2f}%)"
+    )
+
+    if bad_pct > 1.0:
+        if "league_slug" in df.columns:
+            breakdown = (
+                df.loc[bad]
+                .groupby("league_slug")
+                .size()
+                .sort_values(ascending=False)
+            )
+            detail = "\\n" + breakdown.to_string()
+        else:
+            detail = ""
+
+        raise RuntimeError(
+            f"{label}: {bad_n:,} rows ({bad_pct:.2f}%) have no valid "
+            "player_name. Refusing to continue because null-name joins can "
+            f"corrupt role outputs.{detail}"
+        )
+
+
+# ======================================================================================
 # ROLE SCORING
 # ======================================================================================
+
+def shortlist_minimum_role_coverage(role_module, role_key: str) -> float:
+    """
+    Coverage policy for the expanded BSD 2025/26 universe.
+
+    These three roles rely on metrics that the historical BSD schema does not
+    expose completely. The role-fit function already dynamically reweights
+    available metrics, so the threshold should test whether enough of the role
+    is represented rather than require unavailable fields.
+    """
+    overrides = {
+        "holding_pivot": 0.45,   # observed historical coverage ~0.49
+        "creative_cam": 0.40,    # observed historical coverage ~0.45
+        "inside_creator": 0.40,  # observed historical coverage ~0.44
+    }
+    return overrides.get(
+        role_key,
+        role_module.minimum_role_coverage(role_key),
+    )
+
 
 def score_all_players(hist: pd.DataFrame, role_module) -> pd.DataFrame:
     hist = role_module.ensure_common_columns(hist.copy())
@@ -547,6 +668,19 @@ def score_all_players(hist: pd.DataFrame, role_module) -> pd.DataFrame:
     hist["minutes"] = pd.to_numeric(hist["minutes"], errors="coerce")
     eligible = hist[hist["minutes"] >= MIN_MINUTES].copy()
 
+    # Diagnostic counters make it obvious which gate eliminates a role.
+    diagnostics = {
+        role_key: {
+            "minutes_pool": len(eligible),
+            "position_eligible": 0,
+            "fit_returned": 0,
+            "coverage_pass": 0,
+            "written": 0,
+            "coverage_values": [],
+        }
+        for role_key in ROLE_ORDER
+    }
+
     rows = []
 
     for idx, player in eligible.iterrows():
@@ -554,11 +688,10 @@ def score_all_players(hist: pd.DataFrame, role_module) -> pd.DataFrame:
             if role_key not in role_module.ROLE_MODELS:
                 continue
 
-            # Use Transfermarkt's natural/detailed position when available.
-            # This prevents a productive LWB such as Dimarco from being treated
-            # as a CAM merely because his creation metrics are excellent.
             if not role_position_eligible(player, role_key):
                 continue
+
+            diagnostics[role_key]["position_eligible"] += 1
 
             role_fit, coverage, metric_z = role_module.role_fit_for_row(
                 player,
@@ -570,9 +703,15 @@ def score_all_players(hist: pd.DataFrame, role_module) -> pd.DataFrame:
             if pd.isna(role_fit):
                 continue
 
-            min_cov = role_module.minimum_role_coverage(role_key)
+            diagnostics[role_key]["fit_returned"] += 1
+            if pd.notna(coverage):
+                diagnostics[role_key]["coverage_values"].append(float(coverage))
+
+            min_cov = shortlist_minimum_role_coverage(role_module, role_key)
             if coverage < min_cov:
                 continue
+
+            diagnostics[role_key]["coverage_pass"] += 1
 
             model = role_module.ROLE_MODELS[role_key]
 
@@ -604,11 +743,66 @@ def score_all_players(hist: pd.DataFrame, role_module) -> pd.DataFrame:
                 "league_strength": role_module.LEAGUE_STRENGTH.get(
                     str(player["league_slug"]), np.nan
                 ),
-                "strengths": "; ".join(f"{label} {z:+.2f}z" for label, z in strengths),
-                "weaknesses": "; ".join(f"{label} {z:+.2f}z" for label, z in weaknesses),
+                "strengths": "; ".join(
+                    f"{label} {z:+.2f}z" for label, z in strengths
+                ),
+                "weaknesses": "; ".join(
+                    f"{label} {z:+.2f}z" for label, z in weaknesses
+                ),
             })
 
-    return pd.DataFrame(rows)
+            diagnostics[role_key]["written"] += 1
+
+    print()
+    print("=" * 120)
+    print("ROLE SCORING GATE DIAGNOSTIC")
+    print("=" * 120)
+
+    for role_key in ROLE_ORDER:
+        d = diagnostics[role_key]
+        covs = d["coverage_values"]
+        min_cov = (
+            shortlist_minimum_role_coverage(role_module, role_key)
+            if role_key in role_module.ROLE_MODELS
+            else np.nan
+        )
+        median_cov = np.median(covs) if covs else np.nan
+        max_cov = max(covs) if covs else np.nan
+
+        print(
+            f"{role_key:<20} "
+            f"pos={d['position_eligible']:<5} "
+            f"fit={d['fit_returned']:<5} "
+            f"covpass={d['coverage_pass']:<5} "
+            f"rows={d['written']:<5} "
+            f"min_required={min_cov:.2f} "
+            f"median_cov={median_cov:.2f} "
+            f"max_cov={max_cov:.2f}"
+        )
+
+    result = pd.DataFrame(rows)
+
+    # Fail loudly if a major recruitment role has zero output, and give the
+    # diagnostic rather than silently writing an empty shortlist.
+    key_roles = ["holding_pivot", "creative_cam", "inside_creator"]
+    zero_roles = [
+        r for r in key_roles
+        if r in role_module.ROLE_MODELS
+        and diagnostics[r]["written"] == 0
+    ]
+
+    if zero_roles:
+        print()
+        print(
+            "WARNING: zero scored candidates remain for: "
+            + ", ".join(zero_roles)
+        )
+        print(
+            "The gate diagnostic above identifies whether the cause is "
+            "position eligibility, role-fit availability, or metric coverage."
+        )
+
+    return result
 
 
 # ======================================================================================
@@ -762,13 +956,126 @@ def load_newcastle_refs() -> pd.DataFrame:
 # UNIQUE PLAYER SHORTLIST
 # ======================================================================================
 
+
+def debug_club_columns(
+    df: pd.DataFrame,
+    label: str = "DataFrame",
+    enabled: bool = False,
+) -> None:
+    """
+    Optional schema diagnostic for club/team columns.
+    Disabled during normal production runs.
+    """
+    if not enabled:
+        return
+    print()
+    print("=" * 120)
+    print(f"DEBUG CLUB / TEAM ATTRIBUTES — {label}")
+    print("=" * 120)
+
+    candidates = [
+        c for c in df.columns
+        if any(token in c.lower() for token in ["club", "team", "squad"])
+    ]
+
+    if not candidates:
+        print("No club/team/squad-like columns found.")
+        print("All columns:")
+        print(list(df.columns))
+        return
+
+    for col in candidates:
+        series = df[col]
+        non_null = int(series.notna().sum())
+        non_blank = int(
+            (
+                series.notna()
+                & series.astype(str).str.strip().ne("")
+                & ~series.astype(str).str.lower().isin({"nan", "none", "<na>"})
+            ).sum()
+        )
+
+        samples = (
+            series.dropna()
+            .astype(str)
+            .loc[lambda s: s.str.strip().ne("")]
+            .drop_duplicates()
+            .head(8)
+            .tolist()
+        )
+
+        print(
+            f"{col:<32} "
+            f"non-null={non_null:<6} "
+            f"non-blank={non_blank:<6} "
+            f"samples={samples}"
+        )
+
+    print()
+    print("Preferred club resolution order:")
+    print(
+        "  display_club_name -> current_club_name -> current_club_name_y -> "
+        "current_club_name_tm -> historical_club_name -> club_name -> "
+        "team_name -> club -> team -> squad"
+    )
+
+
+def resolve_club_column(df: pd.DataFrame) -> str | None:
+    """
+    Return the best available club column for display/grouping.
+    """
+    preferred = [
+        "display_club_name",
+        "current_club_name",
+        "current_club_name_y",
+        "current_club_name_tm",
+        "historical_club_name",
+        "club_name",
+        "team_name",
+        "club",
+        "team",
+        "squad",
+    ]
+
+    for col in preferred:
+        if col not in df.columns:
+            continue
+
+        series = df[col]
+        valid = (
+            series.notna()
+            & series.astype(str).str.strip().ne("")
+            & ~series.astype(str).str.lower().isin({"nan", "none", "<na>"})
+        )
+
+        if valid.any():
+            return col
+
+    return None
+
+
 def build_unique_player_shortlist(df: pd.DataFrame) -> pd.DataFrame:
+    debug_club_columns(df, "before unique-player grouping", enabled=False)
+
+    club_group_col = resolve_club_column(df)
+    print(f"Resolved club grouping column: {club_group_col}")
+
+    if club_group_col is None:
+        print(
+            "WARNING: no usable club attribute found. "
+            "Unique-player grouping will fall back to player identity only."
+        )
     if df.empty:
         return pd.DataFrame()
 
     rows = []
 
-    group_cols = ["player_name", "club_name", "league_slug"]
+    # Primary unique identity is player name. Club is metadata, not identity:
+    # a player can have historical and current clubs that differ.
+    # League is kept only to protect against rare same-name collisions.
+    group_cols = ["player_name"]
+    if "league_slug" in df.columns:
+        group_cols.append("league_slug")
 
     for _, group in df.groupby(group_cols, dropna=False):
         group = group.sort_values("role_fit", ascending=False).copy()
@@ -808,7 +1115,15 @@ def build_unique_player_shortlist(df: pd.DataFrame) -> pd.DataFrame:
 
         rows.append({
             "player_name": best["player_name"],
-            "club_name": best["club_name"],
+            "club_name": (
+            best.get("display_club_name")
+            if pd.notna(best.get("display_club_name"))
+            else (
+                best.get("current_club_name")
+                if pd.notna(best.get("current_club_name"))
+                else best.get("historical_club_name", pd.NA)
+            )
+        ),
             "league_slug": best["league_slug"],
             "natural_position": best.get("natural_position", ""),
             "natural_position_code": best.get("natural_position_code", ""),
@@ -1276,7 +1591,48 @@ def main():
     hist = pd.read_parquet(HISTORICAL_RAW)
     hist = role_module.ensure_common_columns(hist)
 
+    print()
+    print("=" * 120)
+    print("BSD HISTORICAL CLUB ATTRIBUTE DIAGNOSTIC")
+    print("=" * 120)
+    club_like = [
+        c for c in hist.columns
+        if any(token in c.lower() for token in ["club", "team", "squad"])
+    ]
+    for col in club_like:
+        series = hist[col]
+        valid = (
+            series.notna()
+            & series.astype(str).str.strip().ne("")
+            & ~series.astype(str).str.lower().isin({"nan", "none", "<na>"})
+        )
+        samples = (
+            series[valid]
+            .astype(str)
+            .drop_duplicates()
+            .head(5)
+            .tolist()
+        )
+        print(
+            f"{col:<32} valid={int(valid.sum()):<6} "
+            f"samples={samples}"
+        )
+
+    hist = preserve_historical_club(hist)
+    validate_player_identity(hist, "Historical player-season pool")
+
     tm = pd.read_parquet(TRANSFERMARKT_ENRICHED)
+
+    print(
+        f"Transfermarkt enrichment rows loaded: {len(tm):,} "
+        f"for {len(hist):,} historical player-team rows"
+    )
+    if len(tm) < len(hist) * 0.35:
+        print(
+            "WARNING: Transfermarkt enrichment is much smaller than the "
+            "historical universe. Re-run the Transfermarkt enrichment step "
+            "after rebuilding the expanded Europe pool."
+        )
 
     # Helpful schema diagnostic for Transfermarkt enrichment.
     tm_prepared = prepare_transfermarkt(tm)
@@ -1290,7 +1646,7 @@ def main():
     print("TM position column:", tm_prepared.attrs.get("detected_tm_position_col"))
     print("TM sub-position column:", tm_prepared.attrs.get("detected_tm_sub_position_col"))
     print("Rows with age:", int(tm_prepared["age"].notna().sum()), "/", len(tm_prepared))
-    print("Rows with club:", int(tm_prepared["club_name"].notna().sum()), "/", len(tm_prepared))
+    print("Rows with club:", int(tm_prepared["current_club_name"].notna().sum()), "/", len(tm_prepared))
 
     club_like_cols = [
         c for c in tm.columns
@@ -1312,8 +1668,113 @@ def main():
 
     enriched_hist = merge_transfermarkt(hist, tm)
 
+    # Canonical current club for recruitment/display.
+    current_club_source = first_existing(
+        enriched_hist,
+        [
+            "current_club_name",
+            "current_club_name_y",
+            "current_club_name_tm",
+            "current_club",
+            "tm_club_name",
+            "transfermarkt_club",
+        ],
+    )
+    if current_club_source:
+        enriched_hist["current_club_name"] = enriched_hist[current_club_source]
+    elif "current_club_name" not in enriched_hist.columns:
+        enriched_hist["current_club_name"] = pd.NA
+
+    # Fallback to the historical BSD club only when Transfermarkt current club
+    # is unavailable.
+    if "historical_club_name" not in enriched_hist.columns:
+        hist_source = first_existing(
+            enriched_hist,
+            ["club_name", "team_name", "team", "club"],
+        )
+        enriched_hist["historical_club_name"] = (
+            enriched_hist[hist_source] if hist_source else pd.NA
+        )
+
+    def _valid_text(series: pd.Series) -> pd.Series:
+        return (
+            series.notna()
+            & series.astype(str).str.strip().ne("")
+            & ~series.astype(str).str.lower().isin({"nan", "none", "<na>"})
+        )
+
+    current_valid = _valid_text(enriched_hist["current_club_name"])
+    historical_valid = _valid_text(enriched_hist["historical_club_name"])
+
+    enriched_hist["display_club_name"] = enriched_hist[
+        "current_club_name"
+    ].where(
+        current_valid,
+        enriched_hist["historical_club_name"],
+    )
+
+    # Keep the canonical fields explicit in every downstream export.
+    enriched_hist["club_name"] = enriched_hist["display_club_name"]
+
+    validate_player_identity(enriched_hist, "Transfermarkt-enriched pool")
+
+    print(
+        "Club coverage: "
+        f"current={int(current_valid.sum()):,}/{len(enriched_hist):,} "
+        f"({current_valid.mean() * 100:.2f}%), "
+        f"historical={int(historical_valid.sum()):,}/{len(enriched_hist):,} "
+        f"({historical_valid.mean() * 100:.2f}%), "
+        f"display={int(_valid_text(enriched_hist['display_club_name']).sum()):,}/"
+        f"{len(enriched_hist):,}"
+    )
+
+    current_known = _valid_text(enriched_hist["current_club_name"])
+    if current_known.mean() < 0.60:
+        print(
+            "WARNING: current-club coverage is below 60%. "
+            "The shortlist will fall back to historical BSD club names where needed. "
+            "Re-run Transfermarkt enrichment if this is unexpectedly low."
+        )
+
     scored = score_all_players(enriched_hist, role_module)
+
+    if scored.empty:
+        raise RuntimeError(
+            "Role scoring returned zero rows. Check position inference, "
+            "role-model compatibility, and minimum metric coverage."
+        )
+
+    validate_player_identity(scored, "Role-scored shortlist")
+
+    required_scored = {"player_name", "role_key", "role_fit"}
+    missing_scored = required_scored - set(scored.columns)
+    if missing_scored:
+        raise RuntimeError(
+            f"Role-scored shortlist missing required columns: "
+            f"{sorted(missing_scored)}"
+        )
+
     final = add_market_layer(scored, enriched_hist)
+
+    # Restore canonical club columns if add_market_layer selected a subset.
+    for canonical_col in [
+        "historical_club_name",
+        "current_club_name",
+        "display_club_name",
+        "club_name",
+    ]:
+        if canonical_col not in final.columns and canonical_col in enriched_hist.columns:
+            lookup = (
+                enriched_hist[
+                    ["player_name", "league_slug", canonical_col]
+                ]
+                .drop_duplicates(["player_name", "league_slug"])
+            )
+            final = final.merge(
+                lookup,
+                on=["player_name", "league_slug"],
+                how="left",
+            )
 
     # Exclude current Newcastle players from the external market results where possible.
     refs = load_newcastle_refs()

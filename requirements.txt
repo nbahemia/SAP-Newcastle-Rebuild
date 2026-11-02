@@ -1,7 +1,34 @@
-statsbombpy
-pandas
-numpy
-pyarrow
-matplotlib
-mplsoccer
-duckdb
+# SAP-Newcastle-Rebuild
+# Python 3.11+
+#
+# Install with:
+#   python -m pip install -r requirements.txt
+
+# Core data analysis
+numpy>=2.0
+pandas>=2.2
+scipy>=1.14
+pyarrow>=17.0
+
+# Local analytical database / Transfermarkt enrichment
+duckdb>=1.1
+
+# Web extraction and caching
+requests>=2.32
+requests-cache>=1.2
+beautifulsoup4>=4.12
+lxml>=5.3
+selenium>=4.25
+seleniumbase>=4.31
+
+# Configuration / utilities
+python-dotenv>=1.0
+tqdm>=4.66
+Unidecode>=1.3
+
+# Visualization
+matplotlib>=3.9
+mplsoccer>=1.4
+
+# HTML/report templating used by generated scouting outputs
+Jinja2>=3.1

@@ -115,6 +115,158 @@ ROLE_ORDER_MAP = {
         ROLE_ORDER
     )
 }
+
+# ======================================================================================
+# NEWCASTLE ROLE BENCHMARK REFERENCES
+#
+# Do not infer the identity of the benchmark player from squad-depth "Choice 1".
+# The depth table is useful for presentation, but role ownership can change as we refine
+# the tactical interpretation.  These references anchor recruitment comparisons to the
+# Newcastle players we actually want representing each role.
+#
+# Current midfield interpretation:
+#   - Holding Controller: Lewis Miley
+#   - Advanced / Workhorse 8: Joelinton / Aladji Bamba
+#   - Sean Steur: developmental midfield depth, not the current benchmark
+#   - Jacob Ramsey: useful rotation (~49 in the midfield model), not the benchmark
+# ======================================================================================
+NEWCASTLE_ROLE_BENCHMARK_REFERENCES = {
+    # Dedić is the actual Newcastle RB1.  Do not let a stale depth-file ordering
+    # benchmark the role against Livramento or another historical row.
+    "Right WB / FB": {
+        "sources": [
+            "right_back_jaissle_detailed.csv",
+            "newcastle_jaissle_role_benchmarks.csv",
+        ],
+        "player_candidates": ["player_name", "Player"],
+        "score_candidates": [
+            "jaissle_fb_score",
+            "Jaissle RB",
+            "jaissle_role_score",
+            "Score",
+        ],
+        "players": ["Amar Dedić", "Amar Dedic", "A. Dedić", "A. Dedic"],
+        "mode": "max",
+    },
+
+    # Miley is the intended controller benchmark.
+    "Holding Controller": {
+        "sources": [
+            "holding_controller_jaissle_detailed.csv",
+            "newcastle_jaissle_role_benchmarks.csv",
+        ],
+        "player_candidates": ["Player", "player_name"],
+        "score_candidates": [
+            "Jaissle Controller",
+            "jaissle_controller_score",
+            "jaissle_role_score",
+            "Score",
+        ],
+        "players": ["Lewis Miley", "L. Miley"],
+        "mode": "max",
+    },
+
+    # Bamba and Joelinton are the senior 8 references.  The benchmark should be
+    # the stronger of the two current options; Steur is developmental and Ramsey
+    # is rotation depth rather than the role benchmark.
+    "Advanced / Workhorse 8": {
+        "sources": [
+            "newcastle_jaissle_role_benchmarks.csv",
+            "workhorse_cm_jaissle_detailed.csv",
+            "newcastle_jaissle_optimal_roles.csv",
+        ],
+        "player_candidates": ["player_name", "Player"],
+        "score_candidates": [
+            "jaissle_role_score",
+            "jaissle_workhorse_score",
+            "Jaissle Workhorse",
+            "Score",
+            "Role Score",
+        ],
+        "players": ["Aladji Bamba", "A. Bamba", "Joelinton"],
+        "mode": "max",
+        "role_keys": ["advanced_pivot", "Advanced / Workhorse 8"],
+    },
+
+
+    # Winger benchmarks must be archetype-specific.  Do not inherit Score 1
+    # from squad_depth_analysis.csv simply because Touré is listed first.
+    # Resolve the strongest CURRENT Newcastle option in each archetype instead.
+    "Wide Creator": {
+        "sources": [
+            "winger_jaissle_archetypes.csv",
+            "newcastle_jaissle_role_benchmarks.csv",
+        ],
+        "player_candidates": ["Player", "player_name"],
+        "score_candidates": [
+            "Creator",
+            "wide_creator_score",
+            "jaissle_role_score",
+            "Score",
+        ],
+        "players": [
+            "Bazoumana Touré",
+            "Bazoumana Toure",
+            "B. Touré",
+            "Anthony Elanga",
+            "A. Elanga",
+            "Matias Fernandez-Pardo",
+            "M. Fernandez-Pardo",
+        ],
+        "mode": "max",
+        "role_keys": ["wide_creator", "Wide Creator"],
+    },
+
+    "Vertical / Box Winger": {
+        "sources": [
+            "winger_jaissle_archetypes.csv",
+            "newcastle_jaissle_role_benchmarks.csv",
+        ],
+        "player_candidates": ["Player", "player_name"],
+        "score_candidates": [
+            "Vertical/Box",
+            "vertical_box_score",
+            "jaissle_role_score",
+            "Score",
+        ],
+        "players": [
+            "Matias Fernandez-Pardo",
+            "M. Fernandez-Pardo",
+            "Bazoumana Touré",
+            "Bazoumana Toure",
+            "B. Touré",
+            "Harvey Barnes",
+            "H. Barnes",
+        ],
+        "mode": "max",
+        "role_keys": ["vertical_box", "Vertical / Box Winger"],
+    },
+
+    "Hybrid Winger": {
+        "sources": [
+            "winger_jaissle_archetypes.csv",
+            "newcastle_jaissle_role_benchmarks.csv",
+        ],
+        "player_candidates": ["Player", "player_name"],
+        "score_candidates": [
+            "Hybrid",
+            "hybrid_score",
+            "jaissle_role_score",
+            "Score",
+        ],
+        "players": [
+            "Bazoumana Touré",
+            "Bazoumana Toure",
+            "B. Touré",
+            "Matias Fernandez-Pardo",
+            "M. Fernandez-Pardo",
+            "Anthony Elanga",
+            "A. Elanga",
+        ],
+        "mode": "max",
+        "role_keys": ["hybrid_winger", "Hybrid Winger"],
+    },
+}
 # ======================================================================================
 # FALLBACK LEAGUE STRENGTH
 #
@@ -374,14 +526,147 @@ def age_component(
 # ======================================================================================
 # BENCHMARKS
 # ======================================================================================
+def _benchmark_score_from_reference(
+    role: str,
+    spec: dict,
+) -> float | None:
+    """Resolve a Newcastle benchmark from the explicitly intended current player(s).
+
+    Search Newcastle-specific benchmark files first, then role-specific recruitment
+    files.  This avoids depending on squad-depth ordering and also handles current
+    Newcastle players that are intentionally excluded from external recruitment pools.
+    """
+    wanted_aliases: set[str] = set()
+    for player in spec.get("players", []):
+        wanted_aliases.update(
+            name_aliases(player)
+        )
+
+    if not wanted_aliases:
+        return None
+
+    resolved_scores: list[float] = []
+
+    for filename in spec.get("sources", []):
+        path = SHORTLIST_DIR / filename
+        if not path.exists():
+            continue
+
+        try:
+            df = pd.read_csv(path)
+        except Exception as exc:
+            print(
+                f"[benchmark override] could not read {path.name}: {exc}"
+            )
+            continue
+
+        player_col = find_col(
+            df,
+            spec.get(
+                "player_candidates",
+                ["Player", "player_name"],
+            ),
+        )
+        score_col = find_col(
+            df,
+            spec.get(
+                "score_candidates",
+                [],
+            ),
+        )
+        if player_col is None or score_col is None:
+            continue
+
+        matched = df[
+            df[player_col].map(
+                lambda value:
+                bool(
+                    name_aliases(value)
+                    & wanted_aliases
+                )
+            )
+        ].copy()
+
+        # Optional role-key guard for files containing several Newcastle roles.
+        role_keys = spec.get("role_keys", [])
+        if role_keys and not matched.empty:
+            role_col = find_col(
+                matched,
+                [
+                    "role_key",
+                    "Role",
+                    "role",
+                    "Optimal Role",
+                    "Best Role",
+                ],
+            )
+            if role_col is not None:
+                wanted_role_keys = {
+                    normalize_name(value)
+                    for value in role_keys
+                }
+                role_mask = (
+                    matched[role_col]
+                    .astype(str)
+                    .map(normalize_name)
+                    .isin(wanted_role_keys)
+                )
+                if role_mask.any():
+                    matched = matched.loc[role_mask].copy()
+
+        if matched.empty:
+            continue
+
+        scores = pd.to_numeric(
+            matched[score_col],
+            errors="coerce",
+        ).dropna()
+
+        if scores.empty:
+            continue
+
+        resolved_scores.extend(
+            scores.astype(float).tolist()
+        )
+
+    if not resolved_scores:
+        return None
+
+    mode = str(
+        spec.get(
+            "mode",
+            "max",
+        )
+    ).lower()
+
+    values = pd.Series(
+        resolved_scores,
+        dtype="float64",
+    )
+
+    if mode == "mean":
+        return float(values.mean())
+    if mode == "min":
+        return float(values.min())
+
+    return float(values.max())
+
+
 def load_benchmarks() -> dict[str, float]:
     if not DEPTH_FILE.exists():
         raise FileNotFoundError(
             DEPTH_FILE
         )
+
     df = pd.read_csv(
         DEPTH_FILE
     )
+
+    # ------------------------------------------------------------------
+    # Base fallback:
+    # retain the existing squad-depth score so the script still works
+    # if one of the role-specific source files is unavailable.
+    # ------------------------------------------------------------------
     benchmarks = {}
     for _, row in df.iterrows():
         score = pd.to_numeric(
@@ -396,6 +681,7 @@ def load_benchmarks() -> dict[str, float]:
         ).iloc[
             0
         ]
+
         if pd.notna(score):
             benchmarks[
                 str(
@@ -406,17 +692,52 @@ def load_benchmarks() -> dict[str, float]:
             ] = float(
                 score
             )
+
+    # ------------------------------------------------------------------
+    # Explicit Newcastle role overrides.
+    #
+    # This prevents a stale squad-depth "Choice 1" identity from changing
+    # the recruitment benchmark.  The score comes directly from the same
+    # role-specific model used to evaluate external candidates.
+    # ------------------------------------------------------------------
+    for role, spec in (
+        NEWCASTLE_ROLE_BENCHMARK_REFERENCES.items()
+    ):
+        resolved = (
+            _benchmark_score_from_reference(
+                role,
+                spec,
+            )
+        )
+        if resolved is not None:
+            benchmarks[
+                role
+            ] = resolved
+            print(
+                f"[benchmark override] "
+                f"{role}: "
+                f"{resolved:.2f} "
+                f"from {', '.join(spec['players'])}"
+            )
+        else:
+            print(
+                f"[benchmark override] "
+                f"{role}: reference player not resolved; "
+                f"using squad-depth fallback "
+                f"{benchmarks.get(role, float('nan')):.2f}"
+            )
+
     print()
-    print(
-        "Loaded squad benchmarks:"
-    )
+    print("-" * TERMINAL_WIDTH)
+    print("NEWCASTLE ROLE BENCHMARKS")
+    print("-" * TERMINAL_WIDTH)
     for role in ROLE_ORDER:
         if role in benchmarks:
             print(
-                f"  "
-                f"{role:<30} "
-                f"{benchmarks[role]:.2f}"
+                f"  {role:<30} "
+                f"{benchmarks[role]:>6.2f}"
             )
+
     return benchmarks
 # ======================================================================================
 # LEAGUE STRENGTH MAP
@@ -1529,6 +1850,16 @@ def build_roles(
         age_col="age",
         value_col="market_value_eur_m",
         minutes_col="minutes",
+        exclude_mask=lambda df:
+        df[
+            "club_name"
+        ]
+        .astype(str)
+        .str.contains(
+            "Newcastle",
+            case=False,
+            na=False,
+        ),
     )
     # ==================================================================================
     # CREATIVE 10
@@ -1694,9 +2025,8 @@ def apply_recruitment_filters(
         )
     )
     print(
-        f"Players removed above "
-        f"€{MAX_TARGET_VALUE_EUR_M:.0f}m: "
-        f"{int(over_value.sum())}"
+        f"  Value filter  > €{MAX_TARGET_VALUE_EUR_M:.0f}m: "
+        f"{int(over_value.sum())} removed"
     )
     result = result[
         ~over_value
@@ -1718,9 +2048,8 @@ def apply_recruitment_filters(
         )
     )
     print(
-        f"Players removed above age "
-        f"{MAX_RECRUITMENT_AGE}: "
-        f"{int(too_old.sum())}"
+        f"  Age filter    > {MAX_RECRUITMENT_AGE}: "
+        f"{int(too_old.sum())} removed"
     )
     result = result[
         ~too_old
@@ -2066,6 +2395,291 @@ def score_board(
         ]
     )
     return result
+
+# ======================================================================================
+# TERMINAL OUTPUT HELPERS
+# ======================================================================================
+
+TERMINAL_WIDTH = 104
+
+
+def _fmt_num(value, digits: int = 2, dash: str = "—") -> str:
+    try:
+        if pd.isna(value):
+            return dash
+        return f"{float(value):.{digits}f}"
+    except (TypeError, ValueError):
+        return dash
+
+
+def _fmt_int(value, dash: str = "—") -> str:
+    try:
+        if pd.isna(value):
+            return dash
+        return f"{int(round(float(value)))}"
+    except (TypeError, ValueError):
+        return dash
+
+
+def _fmt_money(value, digits: int = 1, dash: str = "—") -> str:
+    try:
+        if pd.isna(value):
+            return dash
+        return f"€{float(value):.{digits}f}m"
+    except (TypeError, ValueError):
+        return dash
+
+
+def _clean_text(value, dash: str = "—") -> str:
+    if value is None:
+        return dash
+    try:
+        if pd.isna(value):
+            return dash
+    except (TypeError, ValueError):
+        pass
+
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "<na>"}:
+        return dash
+    return text
+
+
+def _short_text(value, width: int) -> str:
+    text = _clean_text(value)
+    if text == "—" or len(text) <= width:
+        return text
+    if width <= 3:
+        return text[:width]
+    return text[: width - 1] + "…"
+
+
+def _section(title: str, char: str = "=") -> None:
+    print()
+    print(char * TERMINAL_WIDTH)
+    print(title)
+    print(char * TERMINAL_WIDTH)
+
+
+def _subsection(title: str) -> None:
+    print()
+    print(title)
+    print("-" * min(len(title), TERMINAL_WIDTH))
+
+
+def _saved(path: Path) -> None:
+    print(f"  Saved -> {path}")
+
+
+def _print_priority_targets(df: pd.DataFrame) -> None:
+    _subsection("PRIORITY TARGET FULL CHECK")
+
+    if df.empty:
+        print("  No priority targets resolved.")
+        return
+
+    for _, row in df.iterrows():
+        target = _clean_text(row.get("Target"))
+        role = _clean_text(row.get("Best Role"))
+        club = _clean_text(row.get("Current Club"))
+        age = _fmt_int(row.get("Age"))
+        value = _fmt_money(row.get("Current Value €M"))
+        score = _fmt_num(row.get("Target Score"))
+        upgrade = _fmt_num(row.get("Upgrade"))
+        suitability = _fmt_num(row.get("Recruitment Suitability Score"))
+        xg = _fmt_num(row.get("xG/90"))
+        xa = _fmt_num(row.get("xA/90"))
+        shots = _fmt_num(row.get("Shots/90"))
+        recoveries = _fmt_num(row.get("Recoveries/90"))
+        duels = _fmt_num(row.get("Duels Won/90"))
+        raw_metrics = _fmt_int(row.get("Available Raw Metrics"))
+
+        print()
+        print(f"  {target}")
+        print(
+            f"    {role} | {club} | Age {age} | {value}"
+        )
+        print(
+            f"    Score {score} | Upgrade {upgrade} | Suitability {suitability}"
+        )
+        print(
+            f"    xG {xg} | xA {xa} | Shots {shots} | "
+            f"Recoveries {recoveries} | Duels {duels} | Raw metrics {raw_metrics}"
+        )
+
+
+def _print_young_cb(df: pd.DataFrame, limit: int = 15) -> None:
+    _subsection(f"YOUNG HIGH-LINE CB RECRUITMENT — TOP {limit}")
+
+    if df.empty:
+        print("  No candidates survived the current young-CB filters.")
+        return
+
+    print(
+        f"  {'#':>2}  {'Player':<20} {'Club':<22} "
+        f"{'Age':>3} {'€M':>7} {'CB':>6} {'BU':>6} {'FF':>6} {'PHY':>6} {'Score':>7}"
+    )
+    print("  " + "-" * 94)
+
+    for _, row in df.head(limit).iterrows():
+        print(
+            f"  {_fmt_int(row.get('Rank')):>2}  "
+            f"{_short_text(row.get('Player'), 20):<20} "
+            f"{_short_text(row.get('Club'), 22):<22} "
+            f"{_fmt_int(row.get('Age')):>3} "
+            f"{_fmt_num(row.get('Value €M'), 1):>7} "
+            f"{_fmt_num(row.get('Jaissle CB')):>6} "
+            f"{_fmt_num(row.get('Build-Up')):>6} "
+            f"{_fmt_num(row.get('Front-Foot')):>6} "
+            f"{_fmt_num(row.get('Physical')):>6} "
+            f"{_fmt_num(row.get('Young CB Recruitment Score')):>7}"
+        )
+
+
+def _print_wingers(df: pd.DataFrame, limit: int = 20) -> None:
+    _subsection(f"BONA FIDE ATTACKING WINGERS — TOP {limit}")
+
+    if df.empty:
+        print("  No candidates survived the current bona-fide winger filters.")
+        return
+
+    print(
+        f"  {'#':>2}  {'Player':<19} {'Club':<19} {'Age':>3} {'€M':>6} "
+        f"{'Overall':>7} {'Goal':>6} {'Create':>6} {'1v1':>6}  Profile"
+    )
+    print("  " + "-" * 100)
+
+    for _, row in df.head(limit).iterrows():
+        print(
+            f"  {_fmt_int(row.get('Rank')):>2}  "
+            f"{_short_text(row.get('Player'), 19):<19} "
+            f"{_short_text(row.get('Club'), 19):<19} "
+            f"{_fmt_int(row.get('Age')):>3} "
+            f"{_fmt_num(row.get('Value €M'), 1):>6} "
+            f"{_fmt_num(row.get('Winger Recruitment Score')):>7} "
+            f"{_fmt_num(row.get('Goal Threat')):>6} "
+            f"{_fmt_num(row.get('Creation')):>6} "
+            f"{_fmt_num(row.get('1v1 / Progression')):>6}  "
+            f"{_short_text(row.get('Attacking Profile'), 24)}"
+        )
+
+
+def _print_mixed_fullbacks(df: pd.DataFrame, limit: int = 15) -> None:
+    _subsection(f"TWO-SIDED FULLBACK / WINGBACK DEPTH — TOP {limit}")
+
+    if df.empty:
+        print(
+            "  No verified two-sided LB/RB candidates survived "
+            "the current evidence and value filters."
+        )
+        return
+
+    print(
+        f"  {'#':>2}  {'Player':<20} {'Club':<21} {'Age':>3} {'€M':>6} "
+        f"{'FB':>6} {'Create':>6} {'Phys':>6} {'Mixed':>7}  Pools"
+    )
+    print("  " + "-" * 100)
+
+    for _, row in df.head(limit).iterrows():
+        print(
+            f"  {_fmt_int(row.get('Rank')):>2}  "
+            f"{_short_text(row.get('Player'), 20):<20} "
+            f"{_short_text(row.get('Club'), 21):<21} "
+            f"{_fmt_int(row.get('Age')):>3} "
+            f"{_fmt_num(row.get('Value €M'), 1):>6} "
+            f"{_fmt_num(row.get('Fullback Score')):>6} "
+            f"{_fmt_num(row.get('Creation')):>6} "
+            f"{_fmt_num(row.get('Physical')):>6} "
+            f"{_fmt_num(row.get('Mixed Fullback Score')):>7}  "
+            f"{_short_text(row.get('Source Pools'), 18)}"
+        )
+
+
+def _print_role_board(
+    df: pd.DataFrame,
+    rank_col: str,
+    title: str,
+    limit_per_role: int = 5,
+) -> None:
+    _section(title)
+
+    if df.empty:
+        print("  No positive-upgrade recruitment options available.")
+        return
+
+    for role in ROLE_ORDER:
+        role_df = df[
+            (df["Role"] == role)
+            & (pd.to_numeric(df[rank_col], errors="coerce") <= limit_per_role)
+        ].copy()
+
+        if role_df.empty:
+            continue
+
+        role_df = role_df.sort_values(
+            rank_col,
+            ascending=True,
+            na_position="last",
+        )
+
+        print()
+        print(role)
+        print("-" * min(len(role), 55))
+        print(
+            f"  {'#':>2}  {'Player':<20} {'Club':<22} "
+            f"{'Age':>3} {'Score':>6} {'Upg':>6} {'€M':>7} "
+            f"{'Suit':>6} {'Value':>6}  Class"
+        )
+
+        for _, row in role_df.iterrows():
+            print(
+                f"  {_fmt_int(row.get(rank_col)):>2}  "
+                f"{_short_text(row.get('Player'), 20):<20} "
+                f"{_short_text(row.get('TM / Current Club'), 22):<22} "
+                f"{_fmt_int(row.get('Age')):>3} "
+                f"{_fmt_num(row.get('Target Score')):>6} "
+                f"{_fmt_num(row.get('Upgrade')):>6} "
+                f"{_fmt_money(row.get('Current Value €M')):>7} "
+                f"{_fmt_num(row.get('Recruitment Suitability Score')):>6} "
+                f"{_fmt_num(row.get('Value Score')):>6}  "
+                f"{_clean_text(row.get('Class'))}"
+            )
+
+
+def _print_model_summary(
+    overrides: dict[str, dict],
+    matched: int,
+    workhorse_context: dict[str, dict],
+    league_strength_map: dict[str, float],
+) -> None:
+    _section("MODEL / OUTPUT SUMMARY")
+
+    print("  Recruitment Suitability")
+    print(f"    Tactical quality   {TACTICAL_QUALITY_WEIGHT:>6.0%}")
+    print(f"    Newcastle upgrade  {UPGRADE_WEIGHT:>6.0%}")
+    print(f"    League strength    {LEAGUE_STRENGTH_WEIGHT:>6.0%}")
+    print(f"    Age                {AGE_WEIGHT:>6.0%}")
+    print("    + absolute upgrade adjustment")
+
+    print()
+    print("  Value Score")
+    print(f"    Suitability        {VALUE_SUITABILITY_WEIGHT:>6.0%}")
+    print(f"    Affordability      {VALUE_AFFORDABILITY_WEIGHT:>6.0%}")
+    print(f"    Age / development  {VALUE_AGE_WEIGHT:>6.0%}")
+    print(f"    Upgrade            {VALUE_UPGRADE_WEIGHT:>6.0%}")
+
+    print()
+    print("  Filters / metadata")
+    print(f"    Max market value   €{MAX_TARGET_VALUE_EUR_M:.0f}m")
+    print(f"    Max normal age     {MAX_RECRUITMENT_AGE}")
+    print(f"    Transfer aliases   {len(overrides)}")
+    print(f"    Override matches   {matched}")
+    print(f"    CM aliases         {len(workhorse_context)}")
+    print(f"    League strengths   {len(league_strength_map)}")
+
+    print()
+    _saved(OUT)
+
 
 # ======================================================================================
 # EXTENDED RECRUITMENT SCOUTING SCREENS
@@ -2966,68 +3580,79 @@ def run_extended_recruitment_screens(
     board: pd.DataFrame,
     league_strength_map: dict[str, float],
 ) -> None:
-    print()
-    print("=" * 160)
-    print("EXTENDED RECRUITMENT SCOUTING")
-    print("=" * 160)
+    _section("EXTENDED RECRUITMENT SCOUTING")
 
+    # ------------------------------------------------------------------
+    # Priority target deep-dive
+    # ------------------------------------------------------------------
     target_summary, target_metrics = build_priority_target_full_check(board)
-    target_summary.to_csv(TARGET_CHECK_OUT, index=False)
-    target_metrics.to_csv(TARGET_METRICS_OUT, index=False)
-    print("\nPRIORITY TARGET FULL CHECK")
-    if not target_summary.empty:
-        preview_cols = [c for c in [
-            "Target", "Best Role", "Current Club", "Age", "Current Value €M",
-            "Target Score", "Upgrade", "Recruitment Suitability Score",
-            "xG/90", "xA/90", "Shots/90", "Key Passes/90",
-            "Recoveries/90", "Duels Won/90", "Available Raw Metrics"
-        ] if c in target_summary.columns]
-        print(target_summary[preview_cols].to_string(index=False))
-    print(f"Saved: {TARGET_CHECK_OUT}")
-    print(f"Saved: {TARGET_METRICS_OUT}")
+    target_summary.to_csv(
+        TARGET_CHECK_OUT,
+        index=False,
+    )
+    target_metrics.to_csv(
+        TARGET_METRICS_OUT,
+        index=False,
+    )
 
-    young_cb = build_young_cb_recruitment(league_strength_map)
-    young_cb.to_csv(YOUNG_CB_OUT, index=False)
-    print("\nYOUNG HIGH-LINE CB RECRUITMENT — TOP 15")
-    if young_cb.empty:
-        print("No candidates survived the current young-CB filters.")
-    else:
-        cols = [c for c in [
-            "Rank", "Player", "Club", "League", "Age", "Minutes", "Value €M",
-            "Jaissle CB", "Build-Up", "Front-Foot", "Physical", "League Strength",
-            "Young CB Recruitment Score"
-        ] if c in young_cb.columns]
-        print(young_cb.head(15)[cols].to_string(index=False))
-    print(f"Saved: {YOUNG_CB_OUT}")
+    _print_priority_targets(
+        target_summary
+    )
+    _saved(TARGET_CHECK_OUT)
+    _saved(TARGET_METRICS_OUT)
 
-    wingers = build_bona_fide_winger_recruitment(board, league_strength_map)
-    wingers.to_csv(BONA_FIDE_WINGER_OUT, index=False)
-    print("\nBONA FIDE ATTACKING WINGERS — TOP 20")
-    if wingers.empty:
-        print("No candidates survived the current bona-fide winger filters.")
-    else:
-        cols = [c for c in [
-            "Rank", "Player", "Club", "Age", "Value €M", "Attacking Profile",
-            "Winger Recruitment Score", "Goal Threat", "Creation", "1v1 / Progression",
-            "Vertical / Box", "Hybrid", "xG/90", "xA/90", "Shots/90",
-            "League Strength", "Position Evidence"
-        ] if c in wingers.columns]
-        print(wingers.head(20)[cols].to_string(index=False))
-    print(f"Saved: {BONA_FIDE_WINGER_OUT}")
+    # ------------------------------------------------------------------
+    # Young center-backs
+    # ------------------------------------------------------------------
+    young_cb = build_young_cb_recruitment(
+        league_strength_map
+    )
+    young_cb.to_csv(
+        YOUNG_CB_OUT,
+        index=False,
+    )
 
-    mixed = build_mixed_fullback_recruitment(league_strength_map)
-    mixed.to_csv(MIXED_FULLBACK_OUT, index=False)
-    print("\nTWO-SIDED FULLBACK / WINGBACK DEPTH — TOP 15")
-    if mixed.empty:
-        print("No verified two-sided LB/RB candidates survived the current evidence and value filters.")
-    else:
-        cols = [c for c in [
-            "Rank", "Player", "Club", "Age", "Value €M", "Fullback Score",
-            "Creation", "Physical", "xA/90", "Source Pools",
-            "League Strength", "Mixed Fullback Score", "Position Evidence"
-        ] if c in mixed.columns]
-        print(mixed.head(15)[cols].to_string(index=False))
-    print(f"Saved: {MIXED_FULLBACK_OUT}")
+    _print_young_cb(
+        young_cb,
+        limit=15,
+    )
+    _saved(YOUNG_CB_OUT)
+
+    # ------------------------------------------------------------------
+    # Bona-fide attacking wingers
+    # ------------------------------------------------------------------
+    wingers = build_bona_fide_winger_recruitment(
+        board,
+        league_strength_map,
+    )
+    wingers.to_csv(
+        BONA_FIDE_WINGER_OUT,
+        index=False,
+    )
+
+    _print_wingers(
+        wingers,
+        limit=20,
+    )
+    _saved(BONA_FIDE_WINGER_OUT)
+
+    # ------------------------------------------------------------------
+    # Two-sided fullback / wingback depth
+    # ------------------------------------------------------------------
+    mixed = build_mixed_fullback_recruitment(
+        league_strength_map
+    )
+    mixed.to_csv(
+        MIXED_FULLBACK_OUT,
+        index=False,
+    )
+
+    _print_mixed_fullbacks(
+        mixed,
+        limit=15,
+    )
+    _saved(MIXED_FULLBACK_OUT)
+
 
 # ======================================================================================
 # MAIN
@@ -3080,10 +3705,8 @@ def main():
             board
         )
     )
-    print()
     print(
-        f"Candidates after recruitment filters: "
-        f"{len(board)}"
+        f"  Remaining recruitment rows: {len(board)}"
     )
     board = score_board(
         board
@@ -3152,179 +3775,32 @@ def main():
         league_strength_map=league_strength_map,
     )
     # ==================================================================================
-    # SUITABILITY BOARD
-    # ==================================================================================
-    print()
-    print(
-        "=" * 200
-    )
-    print(
-        "RECRUITMENT SUITABILITY BOARD"
-    )
-    print(
-        "=" * 200
-    )
-    suitability_top = (
-        board[
-            board[
-                "Suitability Rank"
-            ]
-            <= 5
-        ]
-        .sort_values(
-            [
-                "_role_order",
-                "Suitability Rank",
-            ]
-        )
-    )
-    suitability_cols = [
-        "Role",
-        "Suitability Rank",
-        "Player",
-        "TM / Current Club",
-        "Statistical League",
-        "League Strength",
-        "Age",
-        "Target Score",
-        "Upgrade",
-        "Current Value €M",
-        "Recruitment Suitability Score",
-        "Value Score",
-        "Class",
-    ]
-    print(
-        suitability_top[
-            suitability_cols
-        ].to_string(
-            index=False
-        )
-    )
-    # ==================================================================================
-    # VALUE BOARD
+    # COMPACT TERMINAL BOARDS
     #
-    # IMPORTANT:
-    # Print Value Rank, not Suitability Rank.
+    # CSVs retain the full detail.  Terminal output is intentionally narrow enough
+    # to read in PowerShell without horizontal scrolling.
     # ==================================================================================
-    print()
-    print(
-        "=" * 200
+    _print_role_board(
+        board,
+        rank_col="Suitability Rank",
+        title="RECRUITMENT SUITABILITY BOARD — TOP 5 PER ROLE",
+        limit_per_role=5,
     )
-    print(
-        "TOP 5 VALUE OPTIONS"
+
+    _print_role_board(
+        board,
+        rank_col="Value Rank",
+        title="VALUE BOARD — TOP 5 PER ROLE",
+        limit_per_role=5,
     )
-    print(
-        "=" * 200
+
+    _print_model_summary(
+        overrides=overrides,
+        matched=matched,
+        workhorse_context=workhorse_context,
+        league_strength_map=league_strength_map,
     )
-    value_top = (
-        board[
-            board[
-                "Value Rank"
-            ]
-            <= 5
-        ]
-        .sort_values(
-            [
-                "_role_order",
-                "Value Rank",
-            ]
-        )
-    )
-    value_cols = [
-        "Role",
-        "Value Rank",
-        "Player",
-        "TM / Current Club",
-        "Statistical League",
-        "League Strength",
-        "Age",
-        "Target Score",
-        "Upgrade",
-        "Current Value €M",
-        "Recruitment Suitability Score",
-        "Value Score",
-        "Class",
-    ]
-    print(
-        value_top[
-            value_cols
-        ].to_string(
-            index=False
-        )
-    )
-    # ==================================================================================
-    # SUMMARY
-    # ==================================================================================
-    print()
-    print(
-        "Recruitment Suitability:"
-    )
-    print(
-        f"  Tactical quality:   "
-        f"{TACTICAL_QUALITY_WEIGHT:.0%}"
-    )
-    print(
-        f"  Newcastle upgrade:  "
-        f"{UPGRADE_WEIGHT:.0%}"
-    )
-    print(
-        f"  League strength:    "
-        f"{LEAGUE_STRENGTH_WEIGHT:.0%}"
-    )
-    print(
-        f"  Age:                 "
-        f"{AGE_WEIGHT:.0%}"
-    )
-    print(
-        "  + absolute upgrade adjustment"
-    )
-    print()
-    print(
-        "Value Score:"
-    )
-    print(
-        f"  Suitability:        "
-        f"{VALUE_SUITABILITY_WEIGHT:.0%}"
-    )
-    print(
-        f"  Affordability:      "
-        f"{VALUE_AFFORDABILITY_WEIGHT:.0%}"
-    )
-    print(
-        f"  Age / development:  "
-        f"{VALUE_AGE_WEIGHT:.0%}"
-    )
-    print(
-        f"  Upgrade:            "
-        f"{VALUE_UPGRADE_WEIGHT:.0%}"
-    )
-    print()
-    print(
-        f"Maximum current market value: "
-        f"€{MAX_TARGET_VALUE_EUR_M:.0f}m"
-    )
-    print(
-        f"Maximum normal target age: "
-        f"{MAX_RECRUITMENT_AGE}"
-    )
-    print(
-        f"Transfer override aliases loaded: "
-        f"{len(overrides)}"
-    )
-    print(
-        f"Recruitment rows matched to overrides: "
-        f"{matched}"
-    )
-    print(
-        f"Workhorse CM metadata aliases loaded: "
-        f"{len(workhorse_context)}"
-    )
-    print(
-        f"League strength values loaded: "
-        f"{len(league_strength_map)}"
-    )
-    print(
-        f"Saved: {OUT}"
-    )
+
+
 if __name__ == "__main__":
     main()

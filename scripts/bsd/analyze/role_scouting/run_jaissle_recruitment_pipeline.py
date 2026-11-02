@@ -1,7 +1,7 @@
-
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -9,7 +9,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[4]
 ROLE_DIR = ROOT / "scripts" / "bsd" / "analyze" / "role_scouting"
+ANALYZE_DIR = ROOT / "scripts" / "bsd" / "analyze"
 SHORTLIST = ROOT / "data" / "processed" / "bsd" / "shortlist"
+VISUALIZATIONS = ROOT / "visualizations"
 
 STAGES = [
     {
@@ -51,22 +53,44 @@ STAGES = [
         "label": "Focal striker scouting",
         "scripts": ["analyze_striker.py"],
         "outputs": ["focal_striker_jaissle_detailed.csv"],
-    }
+    },
 ]
 
 POST = ROLE_DIR / "run_jaissle_post_analysis.py"
 
+FINAL_ANALYSIS_CANDIDATES = [
+    ROLE_DIR / "build_final_shortlist_analysis.py",
+    ANALYZE_DIR / "build_final_shortlist_analysis.py",
+]
 
-def find_script(names):
+IMAGE_CREATION = ANALYZE_DIR / "run_jaissle_image_creation.py"
+
+SHORTLIST_VIS_CANDIDATES = [
+    ANALYZE_DIR / "plot_final_shortlist_vs_position.py",
+    ROLE_DIR / "plot_final_shortlist_vs_position.py",
+]
+
+
+def find_script(paths):
+    for path in paths:
+        if path.exists():
+            return path
+    return None
+
+
+def find_role_script(names):
     for name in names:
-        p = ROLE_DIR / name
-        if p.exists():
-            return p
+        path = ROLE_DIR / name
+        if path.exists():
+            return path
     return None
 
 
 def outputs_exist(names):
-    return bool(names) and all((SHORTLIST / n).exists() for n in names)
+    return bool(names) and all(
+        (SHORTLIST / name).exists()
+        for name in names
+    )
 
 
 def run_stage(label, script):
@@ -74,11 +98,38 @@ def run_stage(label, script):
     print("=" * 120)
     print(f"RUNNING: {label}")
     print("=" * 120)
+
     t0 = time.time()
-    result = subprocess.run([sys.executable, str(script)], cwd=ROOT, text=True)
+
+    result = subprocess.run(
+        [sys.executable, str(script)],
+        cwd=ROOT,
+        text=True,
+    )
+
     if result.returncode != 0:
-        raise RuntimeError(f"{label} failed with exit code {result.returncode}: {script}")
-    print(f"[OK] {label} ({time.time() - t0:.1f}s)")
+        raise RuntimeError(
+            f"{label} failed with exit code {result.returncode}: {script}"
+        )
+
+    print(
+        f"[OK] {label} ({time.time() - t0:.1f}s)"
+    )
+
+
+
+
+def reset_visualizations():
+    """Delete all previously generated visualization files before a fresh run."""
+    if VISUALIZATIONS.exists():
+        shutil.rmtree(VISUALIZATIONS)
+
+    VISUALIZATIONS.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    print(f"[reset] Visualizations folder: {VISUALIZATIONS}")
 
 
 def main():
@@ -87,19 +138,80 @@ def main():
     print("=" * 120)
     print(f"Project root: {ROOT}")
 
+    reset_visualizations()
+
+    # 1. Rebuild positional scouting tables.
     for stage in STAGES:
-        script = find_script(stage["scripts"])
+        script = find_role_script(
+            stage["scripts"]
+        )
+
         if script is not None:
-            print(f"[resolved] {stage['label']}: {script.name}")
-            run_stage(stage["label"], script)
+            print(
+                f"[resolved] {stage['label']}: {script.name}"
+            )
+            run_stage(
+                stage["label"],
+                script,
+            )
+
         elif outputs_exist(stage["outputs"]):
-            print(f"[OK] Existing output retained: {stage['label']}")
+            print(
+                f"[OK] Existing output retained: {stage['label']}"
+            )
+
         else:
             raise FileNotFoundError(
                 f"{stage['label']}: no analyzer and no required output found"
             )
 
-    run_stage("Jaissle post-analysis", POST)
+    # 2. Build combined recruitment/value outputs.
+    run_stage(
+        "Jaissle post-analysis",
+        POST,
+    )
+
+    # 3. Build our hand-picked final shortlist table.
+    final_analysis = find_script(
+        FINAL_ANALYSIS_CANDIDATES
+    )
+
+    if final_analysis is not None:
+        run_stage(
+            "Final shortlist analysis",
+            final_analysis,
+        )
+    else:
+        print(
+            "[warn] build_final_shortlist_analysis.py not found; "
+            "shortlist comparison charts may use an older CSV."
+        )
+
+    # 4. Existing role-profile visualization pack.
+    if IMAGE_CREATION.exists():
+        run_stage(
+            "Role visualization pack",
+            IMAGE_CREATION,
+        )
+    else:
+        print(
+            "[warn] run_jaissle_image_creation.py not found"
+        )
+
+    # 5. Guaranteed shortlist-vs-position market charts.
+    shortlist_vis = find_script(
+        SHORTLIST_VIS_CANDIDATES
+    )
+
+    if shortlist_vis is not None:
+        run_stage(
+            "Final shortlist positional comparisons",
+            shortlist_vis,
+        )
+    else:
+        print(
+            "[warn] plot_final_shortlist_vs_position.py not found"
+        )
 
     print()
     print("=" * 120)

@@ -1,38 +1,85 @@
 # Jaissle Role Analysis — Newcastle United 2026/27
-## Developed by through squad analysis, watching Newcastle season breakdowns, Jaissle tactical and personnel usage, and prior knowledge paired with AI-assisted code and documentation 
 
-## Tactical Structure
+## Development of the Model
 
-Matthias Jaissle's Newcastle have generally operated from a **4-2-3-1**, but the structure is fluid and individual roles matter more than nominal positions.
+This role analysis was developed through squad analysis, watching Newcastle season breakdowns, studying Jaissle's tactical and personnel usage, prior football knowledge, and then testing those observations using code.
 
-The recurring tactical ideas have been:
+The main idea of the project is:
+
+> Do not evaluate the squad only by listed position. Evaluate whether Newcastle have enough players capable of performing the tactical functions Jaissle requires.
+
+The first version of the analysis was mostly qualitative.
+
+The next stage converted those tactical ideas into statistical roles.
+
+The final stage compared:
+
+1. Newcastle's current players
+2. historical 2025/26 role performance
+3. Europe-wide recruitment candidates
+4. league strength
+5. age and market context
+6. visual comparisons
+7. manual FotMob validation
+
+This changed several of the original conclusions.
+
+The model is therefore not intended to be static.
+
+If the football evidence says the role interpretation is wrong, the role definition should change before the model is trusted.
+
+---
+
+# Tactical Structure
+
+Jaissle's Newcastle generally operate from a **4-2-3-1**, but the structure is fluid and individual responsibilities matter more than the nominal formation.
+
+The recurring tactical ideas are:
 
 - a controlling midfielder dropping deeper to organize possession
-- a second central midfielder providing mobility, pressing and defensive support
+- a second central midfielder providing physical coverage, pressing and transition support
 - aggressive fullbacks providing width
-- a No. 10 or second striker playing close to the centre-forward
-- direct wingers attacking space quickly
-- a striker expected to threaten the defensive line vertically
-- a 4-4-2 defensive structure, with the No. 10 often joining the striker in the first pressing line
+- a No. 10 operating between the midfield and forward line
+- wingers attacking in different ways rather than performing identical roles
+- a striker occupying centre-backs and providing a central reference point
+- a 4-4-2 defensive shape, with the No. 10 often joining the striker in the first pressing line
 
-This means the squad should not be evaluated simply by asking whether Newcastle have enough players at each listed position.
+The final rebuild therefore does not try to create eleven individually high-scoring players.
 
-The more useful question is:
+The objective is to build a balanced set of tactical functions.
 
-> **Does Newcastle have enough players capable of performing each tactical function in Jaissle's system?**
+---
 
-At the moment, **Nico González appears to be the most important and most difficult player in the squad to replace tactically.**
+# Current Projected XI
+
+```text
+                    Nikola Krstović
+
+Kenan Yıldız       Lazar Samardžić       Francisco Conceição
+
+              Nico González      Joelinton
+
+Lewis Hall       Sven Botman      Fabian Schär       Amar Dedić
+
+                    Lukáš Horníček
+```
+
+This is the current first-choice XI used for the final squad evaluation.
+
+The important point is that the depth chart still contains different tactical options rather than only weaker copies of the starters.
 
 ---
 
 # Goalkeeper
 
-## Current Players
+## Starter
 
-- **Lukáš Horníček**
-- **Ewen Jaouen**
-- **Nick Pope**
-- **Mark Gillespie**
+**Lukáš Horníček**
+
+## Depth
+
+- Nick Pope
+- Ewen Jaouen
 
 ## Tactical Role
 
@@ -40,881 +87,827 @@ The goalkeeper must:
 
 - support first-phase build-up
 - provide a passing option behind the centre-backs
-- distribute quickly following recoveries
-- defend space behind a relatively aggressive defensive line
-- deal with crosses and direct attacks when Newcastle's press is bypassed
+- distribute quickly after recoveries
+- defend space behind a relatively aggressive line
+- deal with crosses and direct attacks when the press is bypassed
 
-Horníček has emerged as the primary option during the early part of the season.
+## Analytical Position
 
-## Analytical Needs
+Goalkeeper remains one of the less-developed areas of the statistical model.
 
-The current dataset is not sufficient for meaningful goalkeeper evaluation.
-
-Future metrics should include:
+The ideal future goalkeeper model should include:
 
 - post-shot xG prevented
 - save percentage
 - cross claiming
-- pass completion
 - long-pass completion
+- short-build-up involvement
 - sweeping actions
-- defensive actions outside the penalty area
+- defensive actions outside the box
 
-## Squad Planning
+## Recruitment Conclusion
 
-Goalkeeper is not currently a priority for the recruitment model until goalkeeper-specific performance data is incorporated.
+**No current priority.**
+
+The squad has enough options to avoid using budget here before the model is strong enough to justify a change.
 
 ---
 
 # Centre-Backs
 
-Jaissle's centre-backs are expected to contribute both defensively and in possession.
+Jaissle's centre-backs are expected to defend aggressively while also contributing to progression.
 
-They must:
+They need to:
 
-- progress possession from deep
-- find central midfielders vertically
-- switch play into wide areas
-- carry forward when space opens
 - defend larger spaces behind advanced fullbacks
-- step forward aggressively when the pressing structure requires it
+- step forward into duels
+- progress possession from deep
+- find midfielders vertically
+- switch play
+- carry when space opens
+- provide aerial security
 
-Footedness is also relevant because Newcastle currently maintain clear left- and right-sided centre-back options.
+The original analysis viewed centre-back mainly as a medium-term succession problem because Burn and Schär were aging.
+
+The later data work strengthened that conclusion.
 
 ---
 
 ## Left Centre-Back
 
-### Current Players
-
-- **Sven Botman — left-footed**
-- **Dan Burn — left-footed**
-
-### Primary Player
+### Starter
 
 **Sven Botman**
 
-### Role
+Botman provides:
 
-- provide balance on the left side of the first build-up line
-- progress possession from deep
-- play diagonals toward the opposite side
-- support Lewis Hall in possession
-- defend the space behind the left-back
-- provide physical and aerial security
-
-Botman has generally formed the preferred partnership with Malick Thiaw.
-
-### Depth
-
-**Dan Burn**
-
-Burn offers:
-
-- aerial strength
-- physical defending
 - left-footed balance
-- positional versatility
+- aerial strength
+- duel security
+- physical presence
+- progression from the left side
+- cover behind Lewis Hall
 
-However, at 34, he is more naturally viewed as experienced depth than as a long-term starter.
-
-### Relevant Metrics
-
-- progressive passes
-- passes into final third
-- progressive carries
-- interceptions
-- recoveries
-- duels
-- aerial duels
-- long-pass completion
-
-### Squad Planning
-
-This is not an immediate starting-position weakness, but there is a **medium-term succession issue** because the backup option is aging.
+He remains the first-choice LCB.
 
 ---
 
 ## Right Centre-Back
 
-### Current Players
-
-- **Malick Thiaw — right-footed**
-- **Fabian Schär — right-footed**
-
-### Primary Player
-
-**Malick Thiaw**
-
-### Role
-
-- defend aggressively on the right side
-- step into midfield when space opens
-- carry possession forward
-- play vertically into midfield
-- cover behind the right-back
-- defend transitions in larger spaces
-
-### Depth
+### Starter
 
 **Fabian Schär**
 
-Schär remains valuable because of his passing range and ability to progress possession.
+The projected XI currently uses Schär as the starting RCB.
 
-However, like Burn, he is 34 and represents a shorter-term depth option.
+His value remains strongly tied to:
 
-### Current Balance
+- progressive passing
+- long distribution
+- experience
+- comfort stepping forward with the ball
 
-| Left CB | Right CB |
-|---|---|
-| Sven Botman | Malick Thiaw |
-| Dan Burn | Fabian Schär |
+Malick Thiaw remains a starter-quality rotation option and provides more mobility and physical range.
 
-This left-foot/right-foot balance has been preserved even when Newcastle rotate the centre-back pairing.
+---
 
-### Squad Planning
+## Leopold Querfeld
 
-Again, this is primarily a **succession issue rather than an immediate recruitment weakness**.
+Querfeld became the preferred succession signing after the final manual validation stage.
 
-Newcastle do not necessarily need another starting centre-back now, but identifying younger left- and right-sided depth could become important during the rebuild.
+The important FotMob numbers from his 2025/26 profile were:
+
+- 2,704 minutes
+- 7.89 line-breaking passes / 90
+- 4.49 accurate long balls / 90
+- 7.02 duels won / 90
+- 60.3% duel win rate
+- 4.26 aerial wins / 90
+- 64.6% aerial win rate
+- 1.73 tackles / 90
+- 1.20 interceptions / 90
+- 7.32 clearances / 90
+
+The model originally treated several young CBs similarly.
+
+The manual check made the difference.
+
+Querfeld combines:
+
+- progressive distribution
+- aerial dominance
+- physical defending
+- meaningful Bundesliga experience
+- age
+- realistic cost
+
+He is therefore not only a development signing.
+
+He can be treated as a competitive CB3 with a path toward becoming a starter.
+
+---
+
+## Filip Lissah
+
+Lissah remains useful as a developmental CB/RB.
+
+He is not the same type of move as Querfeld.
+
+The role is:
+
+- low-cost development
+- positional versatility
+- future squad depth
+- possible value growth
+
+This gives Newcastle both:
+
+- a serious succession CB
+- a developmental defender
+
+rather than forcing one signing to solve both problems.
 
 ---
 
 # Left-Back
 
-## Current Player
+## Starter
 
 **Lewis Hall**
 
-## Tactical Role
+Hall remains the preferred first-choice LB in the final XI.
 
-Hall is important because he provides both width and technical progression.
+His role requires:
 
-His responsibilities include:
+- width
+- progression
+- receiving switches
+- passing through pressure
+- carrying
+- supporting the winger
+- counter-pressing
+- recovering into the defensive line
 
-- advancing during build-up
-- receiving switches from central midfield
-- progressing possession through passing and carrying
-- supporting the left winger
-- counter-pressing following turnovers
-- recovering quickly into the defensive line
+His statistical role score was already strong enough that Newcastle did not need to replace him.
 
-### Relevant Metrics
+---
 
-- progressive carries
-- carries into final third
-- progressive passes
-- passes into final third
-- pressures
-- recoveries
-- duels
+## Rayan Aït-Nouri
 
-## Depth
+Aït-Nouri was identified as an attacking alternative rather than proof that Hall needed replacing.
 
-Newcastle do not currently have an obvious like-for-like left-back behind Hall.
+He offers:
 
-Possible emergency alternatives include:
+- stronger attacking carrying
+- creativity
+- width
+- ability to change the attacking structure
 
-- Tino Livramento
-- Dan Burn
+This is an example of the project separating **squad option** from **starter replacement**.
 
-but neither replicates Hall's exact profile.
-
-## Squad Planning
-
-**Natural left-back depth is a potential recruitment need.**
-
-This is particularly relevant because Jaissle relies heavily on fullbacks to provide width and support progression.
+Aït-Nouri can provide a different version of the role while Hall remains the projected starter.
 
 ---
 
 # Right-Back
 
-## Current Players
+## Starter
 
-- **Amar Dedić**
-- **Tino Livramento**
+**Amar Dedić**
 
-This is one of the healthier areas of the squad.
+Dedić remains the preferred RB1.
 
-## Amar Dedić
+The role requires:
 
-Dedić fits the aggressive fullback role well.
-
-His responsibilities include:
-
-- advancing early during build-up
-- maintaining width
+- width
+- aggressive positioning
 - receiving switches
 - combining with the right winger
-- pressing high after possession loss
+- pressing after possession loss
+- recovery running
 
-## Tino Livramento
+The benchmarking process had to be corrected so the model compared recruitment targets against Dedić rather than whichever Newcastle player happened to appear first in a depth file.
 
-Livramento provides a different but complementary profile:
+That became an important methodological lesson:
 
-- stronger ball carrying
-- recovery pace
-- one-versus-one ability
-- transition threat
-
-## Squad Planning
-
-Right-back is not currently a major recruitment need.
-
-The squad already has two players capable of performing slightly different versions of the role.
+> the benchmark player must be chosen from tactical interpretation, not file order.
 
 ---
 
-# Controller / Progressive No. 6
+## Bart van Rooij
 
-## Primary Player
+van Rooij was identified as a strong depth option.
+
+His profile included:
+
+- good xA
+- strong duel volume
+- recoveries
+- tackling
+- useful creation
+
+He gives Newcastle a real RB2 rather than forcing midfielders or centre-backs into emergency coverage.
+
+---
+
+# Holding Controller
+
+## Starter
 
 **Nico González**
 
-## Current Alternatives
+Nico is the starting CDM and the structural reference point of the midfield.
 
-- Aladji Bamba
-- Lewis Miley in certain structures
-- Sean Steur in developmental situations
+The role is not simply "defensive midfielder."
 
-However, none currently appear to reproduce Nico's full role.
+He must:
 
----
-
-## Nico González — The Structural Reference Point
-
-Nico is the most important and most unique player in the current system.
-
-He has consistently remained the deeper midfield reference while the player beside him changes.
-
-He has partnered:
-
-- Lewis Miley
-- Jacob Ramsey
-- Joelinton
-
-while the broader midfield structure continues to revolve around his ability to control the first phase.
-
-## Role
-
-Nico is expected to:
-
-- drop toward the centre-backs during build-up
-- become the main first-phase passing option
+- drop toward the centre-backs
+- organize first-phase possession
 - receive under pressure
-- carry through the first line of pressure
 - progress vertically
-- switch play toward advancing fullbacks and wingers
-- initiate transitions immediately after recoveries
+- switch play
+- carry through pressure
+- initiate transitions
 - protect central areas after possession loss
 
-## Relevant Metrics
+The original analysis correctly identified this as one of the most important tactical functions in the system.
 
-- progressive passes
-- passes into final third
-- successful passes
-- progressive carries
-- carries into final third
-- recoveries
-- interceptions
-- pressures
-- duels
-
-## Tactical Importance
-
-This role should be treated separately from a generic defensive midfielder.
-
-A player can be a strong No. 6 without being capable of replacing Nico's responsibilities.
-
-### Proposed Scouting Role
-
-**Controller / Progressive 6**
-
-### Importance
-
-- Progression: **Very High**
-- Carrying: **High**
-- Ball Winning: **High**
-- Pressing: **Moderate**
-- Duels: **Moderate**
-
-## Squad Risk
-
-There is currently no clear like-for-like replacement.
-
-This creates a structural dependency:
-
-> Newcastle may have midfield depth, but they do not currently appear to have meaningful depth for Nico's specific role.
-
-### Recruitment Priority
-
-**High**
-
-The priority is not "another defensive midfielder."
-
-The priority is:
-
-> **a player capable of reproducing the controller function if Nico is unavailable.**
-
----
-
-# Defensive No. 6
-
-## Primary Player
-
-**Aladji Bamba**
-
-Bamba should not automatically be treated as Nico's backup simply because both are listed as defensive midfielders.
-
-His current profile appears closer to a more traditional defensive No. 6.
-
-## Likely Strengths
-
-- defensive range
-- tackling
-- physical length
-- coverage
-- ball winning
-- competent passing
-
-## Role
-
-### Proposed Scouting Role
-
-**Ball-Winning 6 / Defensive Pivot**
-
-Bamba may provide Newcastle with a different tactical option rather than a direct replacement for Nico.
-
-This creates an important distinction:
-
-| Role | Player |
-|---|---|
-| Controller / Progressive 6 | Nico González |
-| Defensive / Ball-Winning 6 | Aladji Bamba |
-
-## Squad Planning
-
-The squad may therefore have **positional depth at No. 6 without having functional depth for Nico's role**.
-
-That distinction should be tested later using player-level performance data.
-
----
-
-# Mobile Central Midfielder / No. 8
-
-## Current Players
-
-- **Lewis Miley**
-- **Joelinton**
-- **Jacob Ramsey**
-- **Sean Steur**
-- **Joe Willock**
-
-This is probably Newcastle's deepest and most overlapping area.
-
-## Tactical Role
-
-The second midfielder generally needs to:
-
-- move around Nico
-- support possession progression
-- cover advanced fullbacks
-- press aggressively
-- join forward transitions
-- recover quickly after possession loss
-
-However, the squad contains several players capable of performing different versions of this role.
+The final squad keeps Nico as the starter.
 
 ---
 
 ## Lewis Miley
 
-Miley provides:
+Miley remains the most useful internal controller alternative.
+
+He provides:
 
 - technical security
-- intelligent positioning
+- positioning
 - passing progression
-- defensive awareness
 - tactical balance
 
-He appears well suited to the more controlled version of the No. 8 role.
+He does not need to replace Nico in the starting XI to remain important.
+
+His value comes from allowing Newcastle to change the midfield without losing all first-phase control.
 
 ---
 
-## Joelinton
+# Central Midfielder / No. 8
 
-Joelinton provides a more physical interpretation:
+## Starter
 
-- aggressive pressing
+**Joelinton**
+
+Joelinton is the starting CM beside Nico.
+
+He provides:
+
+- pressing
 - dueling
-- ball recovery
+- recoveries
 - carrying power
 - physical coverage
+- transition support
 
-He therefore gives Jaissle the option to use a more defensive and aggressive partner beside Nico.
+This creates a natural balance:
+
+> **Nico = control**
+>
+> **Joelinton = aggression / coverage**
+
+That balance is one of the reasons the final midfield does not require another starter.
 
 ---
 
 ## Jacob Ramsey
 
-Ramsey provides:
+Ramsey is retained.
 
-- forward carrying
-- transition running
-- attacking movement
-- ability to play centrally or higher
+His value is not that he is the best player in one single role.
 
-He overlaps significantly with both the No. 8 and No. 10 groups.
+His value is the amount of useful coverage he provides across:
 
----
+- CM
+- advanced 8
+- CAM
+- transition situations
 
-## Sean Steur
+The original model often exposed overlap in Newcastle's central midfield group.
 
-Steur represents:
-
-- technical upside
-- developmental value
-- potential progression ability
-
-He is less proven than the other options but adds further depth to an already crowded midfield group.
+Ramsey survives that analysis because he still gives useful multi-role depth after Willock is moved.
 
 ---
 
-## Joe Willock
+# Creative No. 10
 
-Willock can operate both:
+## Starter
 
-- as a more attacking No. 8
-- as an advanced No. 10
+**Lazar Samardžić**
 
-This versatility gives him tactical value, but it also increases the amount of overlap within the squad.
+Samardžić became the preferred attacking-midfield signing because he provided the right balance between quality, fit and cost.
 
-## Squad Planning
+His historical profile showed:
 
-This area does **not** currently appear to require another signing.
+- strong creative role score
+- xA production
+- chance creation
+- shot involvement
+- progression
+- enough defensive activity to function in the press
 
-Instead, the analytical question should be:
+The important point was that the model separated:
 
-> **Which Newcastle No. 8s provide unique value, and which are largely redundant?**
+- tactical fit
+- transfer value
+- pure star quality
 
-### Recruitment Priority
+Rayan Cherki could grade extremely well in the role but cost far more.
 
-**Low**
-
-### Potential Sale Area
-
-**High**
-
----
-
-# No. 10 / Advanced Midfielder
-
-## Current Players
-
-- **Joe Willock**
-- **Jacob Ramsey**
-- **Yoane Wissa in a more advanced second-striker version**
-
-The role is fluid rather than fixed.
-
----
-
-## Joe Willock
-
-Willock has repeatedly been used in the advanced midfield position.
-
-His responsibilities include:
-
-- pressing alongside the striker
-- making forward runs
-- connecting midfield and attack
-- carrying in transition
-- attacking the box
-
-He has operated ahead of the deeper midfield pair in several matches.
-
-## Contract Situation
-
-Willock's contract expires in June 2027.
-
-That creates a squad-management issue.
-
-The question is not necessarily:
-
-> "Does Newcastle need another No. 10?"
-
-The better question is:
-
-> **Does Willock provide enough unique tactical value to justify a new contract, or can his minutes be redistributed among Ramsey, Wissa and other midfield options?**
-
-### Squad Planning
-
-This should be treated as a **renew / sell / replace decision**, not an automatic recruitment need.
-
----
-
-# Hybrid No. 10 / Second Striker
-
-## Primary Player
-
-**Yoane Wissa**
-
-Wissa should not be treated as a fixed centre-forward.
-
-His usage shows that he can:
-
-- operate behind a striker
-- play as a second striker
-- lead the line when necessary
-
-## Tactical Role
-
-When paired with a true No. 9, Wissa can:
-
-- operate close to the striker
-- receive between midfield and defense
-- attack the penalty area
-- make runs beyond the striker
-- join the first pressing line
-- contribute directly to goals
-
-When the striker is unavailable, he can move forward and play as the 9.
-
-## Squad Planning
-
-Wissa's main value is **front-line flexibility**.
-
-He should therefore be treated as:
-
-> **Hybrid Forward / Second Striker**
-
-rather than simply as a No. 10 or a centre-forward.
+Samardžić therefore represented a much more efficient squad-building decision.
 
 ---
 
 # Left Wing
 
-## Current Players
+## Starter
 
-- **Harvey Barnes**
-- **Bazoumana Touré**
+**Kenan Yıldız**
 
-## Harvey Barnes
+Yıldız raises the ceiling of the attack.
 
-Barnes provides:
+His profile combines:
 
-- direct goal threat
-- inside runs
-- transition finishing
-- aggressive movement toward goal
+- goal threat
+- creation
+- 1v1 ability
+- progression
+- ability to move inside
+- ability to play as a No. 10 if necessary
 
-## Bazoumana Touré
+He also changes the geometry of the left side.
+
+Because Lewis Hall or Aït-Nouri can provide width, Yıldız does not need to remain fixed on the touchline.
+
+He can move into central and half-space areas.
+
+---
+
+## Depth
+
+### Bazoumana Touré
 
 Touré provides:
 
-- youth
 - pace
-- direct carrying
-- developmental upside
-- transition potential
+- carrying
+- pressing
+- ball recoveries
+- creation
+- development upside
 
-## Squad Planning
+He is a different type of LW from Yıldız.
 
-This position currently appears adequately covered.
+### Matías Fernández-Pardo
 
-It contains both:
+Fernández-Pardo adds further coverage as:
 
-- an established attacking option
-- a younger developmental player
+- LW
+- RW
+- ST
 
-### Recruitment Priority
-
-**Low**
+His historical numbers suggest more goal threat than Touré but less all-around pressing/recovery production.
 
 ---
 
 # Right Wing
 
-## Current Players
+## Starter
 
-- **Anthony Elanga**
-- **Matias Fernandez-Pardo**
-- **Jacob Murphy**
+**Francisco Conceição**
+
+The final RW search intentionally stopped trying to find only one winger archetype.
+
+Newcastle already had verticality through Anthony Elanga.
+
+The actual requirement became:
+
+> Find a winger who adds something Elanga does not already provide.
+
+The model therefore balanced:
+
+- vertical / box threat
+- hybrid winger quality
+- goal threat
+- creation
+- 1v1 / progression
+- league strength
+- age
+
+Conceição's profile included:
+
+- 3.13 shots / 90
+- 0.33 xG / 90
+- 0.22 xA / 90
+- 2.32 successful dribbles / 90
+- 8.37 box touches / 90
+- 1.54 line-breaking passes / 90
+- 4.20 recoveries / 90
+
+This is the kind of player Newcastle were missing on the right.
+
+He gives the attack:
+
+- 1v1 threat
+- box involvement
+- shooting
+- secondary creation
+- enough pressing activity
+
+rather than simply adding another transition runner.
 
 ---
 
 ## Anthony Elanga
 
-Elanga is the clearest natural transition winger.
+Elanga remains valuable.
 
-His role emphasizes:
+His role is different:
 
-- attacking space behind defenders
-- running in transition
-- progressive carrying
-- receiving diagonal switches
-- counter-pressing after possession loss
+- attack space behind
+- run in transition
+- provide verticality
+- stretch the defense
 
----
+The problem was never that Elanga had no value.
 
-## Matias Fernandez-Pardo
+The problem was that the squad needed a second RW profile.
 
-Fernandez-Pardo is listed as a centre-forward but his recent usage suggests broader attacking flexibility.
-
-With Osula returning from injury, Fernandez-Pardo has been used from the right side rather than being locked into the No. 9 position.
-
-This suggests that Jaissle may view him as a versatile forward capable of contributing as:
-
-- right winger
-- secondary striker
-- emergency centre-forward
-
-rather than as a dedicated line-leading No. 9.
+That is why Conceição improves the **balance** of the position.
 
 ---
 
-## Jacob Murphy
+# Striker
 
-Murphy provides experienced depth.
+## Starter
 
-However, given his age and contract situation, he represents another medium-term squad-planning decision.
+**Nikola Krstović**
 
-## Squad Planning
+Krstović became the preferred striker because his model and manual profile both supported the same conclusion.
 
-Right wing is currently relatively deep:
+His role score showed a clear improvement over Newcastle's existing focal-striker benchmark.
 
-- Elanga
-- Fernandez-Pardo
-- Murphy
+He provides:
 
-### Recruitment Priority
-
-**Low**
-
----
-
-# Centre-Forward / Pure No. 9
-
-## Current Options
-
-- **William Osula**
-- **Yoane Wissa — secondary option**
-- **Matias Fernandez-Pardo — flexible option**
-
-## Primary Natural No. 9
-
-**William Osula**
-
-Osula currently appears to be the clearest player in the squad for the specialized vertical striker role.
-
-## Tactical Role
-
-The No. 9 must:
-
-- threaten space behind the defense
-- occupy centre-backs
-- lead the first pressing line
-- attack the penalty area
-- provide a direct vertical outlet
-- finish transition opportunities
-
-## The Key Distinction
-
-Newcastle have several players who **can play centre-forward**.
-
-That does not necessarily mean they have multiple players capable of performing the same No. 9 role.
-
-### Osula
-
-- natural line-leading striker
-- attacks depth
-- occupies centre-backs
-
-### Wissa
-
-- hybrid forward
-- useful between the lines
-- capable of playing 9 when required
-
-### Fernandez-Pardo
-
-- flexible forward
-- increasingly used from wider positions
-- may not represent a specialist No. 9
-
-## Squad Planning
-
-This creates a legitimate question:
-
-> **Does Newcastle have enough specialist No. 9 depth behind Osula?**
-
-The answer is not yet definitive.
-
-This should therefore remain a **recruitment hypothesis to test**, rather than a confirmed conclusion.
-
-### Desired Profile
-
-A potential target should provide:
-
-- strong xG generation
+- box threat
 - shot volume
-- penalty-area presence
-- runs behind
+- physical presence
+- enough link play
 - pressing
 - ability to occupy centre-backs
-- transition speed
-- reliable finishing
 
-### Recruitment Priority
+The projected attack does not require him to create everything himself.
 
-**Medium / Investigate Further**
+With:
 
----
+- Yıldız
+- Samardžić
+- Conceição
 
-# Current Functional Role Map
-
-| Tactical Function | Primary | Depth / Alternatives |
-|---|---|---|
-| GK | Horníček | Jaouen, Pope |
-| LCB | Botman | Burn |
-| RCB | Thiaw | Schär |
-| LB | Hall | Livramento, Burn — no true equivalent |
-| RB | Dedić / Livramento | — |
-| Controller / Progressive 6 | **Nico González** | **No true like-for-like replacement** |
-| Defensive 6 | Bamba | Miley in certain structures |
-| Mobile 8 | Miley / Joelinton | Ramsey, Steur, Willock |
-| Advanced 8 / 10 | Willock | Ramsey |
-| Hybrid 10 / Second Striker | Wissa | — |
-| LW | Barnes / Touré | — |
-| RW | Elanga / Fernandez-Pardo | Murphy |
-| Vertical No. 9 | **Osula** | Wissa / Fernandez-Pardo can cover but do not necessarily replicate the same pure-9 role |
+behind him, his main job is to provide a central reference point and finish attacks.
 
 ---
 
-# Preliminary Squad-Building Findings
+## Wissa
 
-## 1. Nico González is the main structural dependency
+Wissa remains useful as:
 
-Nico performs a role that no other current player clearly replicates.
+- striker depth
+- second striker
+- hybrid forward
+- experienced attacking option
 
-Replacing him would require more than finding another defensive midfielder.
-
-A replacement would need to contribute:
-
-- first-phase progression
-- pressure resistance
-- carrying
-- vertical passing
-- switches of play
-- defensive transition protection
-
-### Recruitment Implication
-
-**Controller depth should be a major recruitment priority.**
+His Brentford historical profile remains useful as a reference for what he can produce in a functioning attacking structure.
 
 ---
 
-## 2. Newcastle have significant No. 8 depth
+## William Osula
 
-Miley, Joelinton, Ramsey, Steur and Willock all overlap to some degree.
+Osula remains a developmental vertical striker.
 
-This means Newcastle should not automatically recruit another central midfielder.
+He offers:
 
-Instead, the analysis should identify:
+- pace
+- depth running
+- direct goal threat
+- development upside
 
-- which profiles are unique
-- which profiles overlap
-- whether one player could be sold without significantly weakening the squad
+He is less suited to being the focal link player than Krstović.
 
-### Recruitment Implication
-
-**No immediate No. 8 signing required.**
-
----
-
-## 3. Joe Willock presents a squad-management decision
-
-Willock is tactically useful because he can play as both:
-
-- an attacking No. 8
-- an advanced No. 10
-
-However, his expiring contract and Newcastle's midfield depth create an important decision.
-
-The analysis should determine whether:
-
-- his role is unique enough to justify renewal
-- his minutes could be absorbed internally
-- Newcastle could sell from a position of depth
+That is acceptable because he provides a different option rather than needing to duplicate the starter.
 
 ---
 
-## 4. Bamba provides positional depth, not necessarily role depth
+# Winger Balance
 
-Bamba may provide Newcastle with another defensive midfielder.
+One of the main final squad-building conclusions is that winger balance matters more than having two players with the same role score.
 
-That does not mean he replaces Nico's tactical responsibilities.
+The final group includes:
 
-This distinction is central to the recruitment model.
+### Left
 
----
+- Yıldız — star creator / scorer
+- Touré — carrier / pressing winger
+- Fernández-Pardo — flexible scorer
 
-## 5. Specialist No. 9 depth remains uncertain
+### Right
 
-Osula currently appears to be the clearest natural line-leading striker.
+- Conceição — 1v1 / box / creative winger
+- Elanga — transition runner
+- Fernández-Pardo — flexible depth
 
-Wissa can cover the position but may provide more value as a hybrid forward.
-
-Fernandez-Pardo's wider deployment suggests he may also be better treated as a flexible attacker rather than a dedicated striker.
-
-### Recruitment Implication
-
-**Potential need — requires attacking-data validation.**
+This is much healthier than building the attack around four similar transition wingers.
 
 ---
 
-## 6. Left-back depth is thinner than right-back depth
+# Final Defensive Balance
 
-Newcastle have:
+The projected defensive group provides:
+
+### LB
+
+- Hall
+- Aït-Nouri
+
+### LCB
+
+- Botman
+- Querfeld / Burn depending on matchup and rotation
+
+### RCB
+
+- Schär
+- Thiaw
+- Querfeld
+
+### RB
 
 - Dedić
-- Livramento
+- van Rooij
+- Lissah development
 
-on the right.
-
-Hall does not have an obvious like-for-like replacement on the left.
-
-### Recruitment Implication
-
-**Natural left-back depth should be investigated.**
+This gives Newcastle both immediate depth and succession planning.
 
 ---
 
-## 7. Centre-back is a succession issue rather than an immediate weakness
+# Recruitment Model
 
-Botman and Thiaw provide a strong starting pair.
+The final recruitment model separates three things.
 
-However:
+## 1. Tactical Role Score
 
-- Burn is 34
-- Schär is 34
+How well does the player's statistical profile fit the role?
 
-so Newcastle may need younger depth over the medium term.
+## 2. Recruitment Suitability
 
-### Recruitment Implication
+How useful is the player for Newcastle specifically?
 
-**Low immediate urgency, high medium-term relevance.**
+Working weighting:
+
+- Tactical quality — **45%**
+- Upgrade over Newcastle — **25%**
+- League strength — **25%**
+- Age — **5%**
+
+The model also applies an absolute-upgrade adjustment.
+
+This prevents a player from looking like an elite recruitment option when the actual improvement over Newcastle is tiny.
+
+## 3. Value
+
+Value is evaluated separately.
+
+Working weighting:
+
+- Suitability — **45%**
+- Affordability — **25%**
+- Age / development — **15%**
+- Upgrade — **15%**
+
+This prevents cheap players from artificially looking like the best footballers.
 
 ---
 
-# Current Recruitment Hypotheses
+# Why the Model Changed
 
-The project, based on thsquad context, will focus on using data analysis on the following hypotheses:
+The model improved because several rankings initially looked wrong.
 
-1. **Newcastle need a second controller capable of replacing Nico González's build-up role.**
-2. **Newcastle have enough No. 8 depth and could potentially sell from this group.**
-3. **Joe Willock's value must be weighed against his contract situation and positional overlap.**
-4. **Newcastle may need another specialist No. 9 if Wissa and Fernandez-Pardo continue to fill broader attacking roles.**
-5. **Newcastle may need natural left-back depth behind Lewis Hall.**
-6. **Newcastle will eventually need younger centre-back depth behind Botman and Thiaw.**
+The audit found issues including:
+
+- missing metrics represented as zero
+- CB progression columns not populated correctly
+- different minute totals for the same player across files
+- candidate scores being percentile ranks inside narrow filtered groups
+- physical fallback values being reused across multiple components
+- player identity / alias issues
+- stale Newcastle benchmark players
+- missing league-strength context
+
+The lesson was not to abandon the model.
+
+The lesson was:
+
+> understand why the model produced the ranking before trusting the ranking.
+
+---
+
+# Final Validation Process
+
+The final workflow is:
+
+## Stage 1 — Code
+
+Use the historical dataset and role model to reduce thousands of players to realistic candidates.
+
+## Stage 2 — Visualization
+
+Compare targets to Newcastle players and inspect the actual component profile.
+
+## Stage 3 — FotMob
+
+Manually check:
+
+- minutes
+- per-90 metrics
+- percentiles
+- role
+- position
+- passing
+- progression
+- defensive workload
+- duels
+- aerial ability
+- box involvement
+- chance creation
+
+## Stage 4 — Football Decision
+
+Ask:
+
+- Does this player solve the actual tactical need?
+- Does he add something different to the squad?
+- Is the level transferable?
+- Is the price reasonable?
+- Is there already a player in the squad doing the same job?
+
+The final shortlist is therefore:
+
+> **data-assisted rather than data-determined.**
+
+---
+
+# Final Squad-Building Conclusions
+
+## 1. Nico González remains the midfield reference point
+
+The final rebuild does not replace him.
+
+He starts as the controller.
+
+---
+
+## 2. Joelinton gives the midfield the correct physical balance
+
+There is no need to spend on another starting No. 8.
+
+---
+
+## 3. Samardžić improves central creativity
+
+The attack needs a true connective creator between the double pivot and the striker.
+
+---
+
+## 4. Yıldız raises the attacking ceiling
+
+He gives Newcastle a genuine star-level wide attacker with central flexibility.
+
+---
+
+## 5. Conceição solves the right-wing profile problem
+
+He does not replace Elanga's role.
+
+He complements it.
+
+---
+
+## 6. Krstović provides the focal striker profile
+
+Wissa and Osula remain useful because they offer different alternatives.
+
+---
+
+## 7. Querfeld solves the centre-back succession issue
+
+He can contribute immediately while also becoming part of the long-term CB core.
+
+---
+
+## 8. Lissah remains a development move
+
+He provides CB/RB upside without needing immediate starter minutes.
+
+---
+
+## 9. Hall remains the starting left-back
+
+Aït-Nouri adds a different attacking option rather than making Hall redundant.
+
+---
+
+## 10. The squad does not need to spend the entire budget
+
+Once the main tactical gaps are solved, unused budget has value.
+
+The final objective is not:
+
+> spend €150 million.
+
+The objective is:
+
+> build the strongest and most balanced Newcastle squad possible within €150 million.
+
+---
+
+# Current Recruitment Direction
+
+## Incoming
+
+- Nikola Krstović
+- Kenan Yıldız
+- Lazar Samardžić
+- Rayan Aït-Nouri
+- Bart van Rooij
+- Francisco Conceição
+- Leopold Querfeld
+
+## Development
+
+- Filip Lissah
+
+## Outgoing
+
+- Tino Livramento
+- Harvey Barnes
+- Jacob Murphy
+- Joe Willock
+
+## Retained
+
+- Jacob Ramsey
+
+---
+
+# Final Role Map
+
+| Tactical Function | Starter | Main Depth / Alternative |
+|---|---|---|
+| GK | Horníček | Pope, Jaouen |
+| LB | Hall | Aït-Nouri |
+| LCB | Botman | Querfeld, Burn |
+| RCB | Schär | Thiaw, Querfeld |
+| RB | Dedić | van Rooij, Lissah |
+| Controller / 6 | Nico González | Miley |
+| Physical / Mobile 8 | Joelinton | Ramsey, Miley |
+| Creative 10 | Samardžić | Ramsey, Yıldız |
+| LW | Yıldız | Touré, Fernández-Pardo |
+| RW | Conceição | Elanga, Fernández-Pardo |
+| Focal Striker | Krstović | Wissa, Osula |
+
+---
+
+# Overall View
+
+The project started as a positional squad review.
+
+It ended up becoming a role-based recruitment model.
+
+The main improvement was learning not to treat the code as the final answer.
+
+The model is strongest when it is used to:
+
+- reduce the search space
+- identify statistical strengths
+- compare profiles consistently
+- test tactical assumptions
+
+and then combined with:
+
+- visual analysis
+- FotMob
+- squad context
+- football judgment
+
+That is the final methodology behind the rebuild.

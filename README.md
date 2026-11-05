@@ -440,27 +440,17 @@ The model was most useful as a way to narrow thousands of possible players into 
 
 Developed for the **Purdue Sports Analytics Club — Fall 2026 Project**.
 
-**Project Team**
+### Project Development
+
+This project was developed by **Naeem Bahemia**, including the tactical research, analytical methodology, data pipeline, role and similarity models, player scouting, squad construction, and final recruitment decisions. Generative AI was used extensively to assist with the software implementation, as described in the AI-Assisted Development section above.
+
+### Final Presentation
+
+The project was presented for Purdue Sports Analytics Club by:
 
 - Naeem Bahemia
 - Naitik Rambhia
 - Sunay Konnur
 - Braden Parker
-- Andrew Morin
 
-**Coding and Project Completion**
- - Mainly me (Naeem Bahemia)
-
-The final project combined data analysis, tactical research, squad evaluation, player scouting, and transfer-market decision making.
-
----
-
-## Acknowledgments
-
-This project uses third-party football and market data for educational and analytical purposes. Player statistics, valuations, and other external information remain the property of their respective data providers.
-
-Generative AI tools, including **OpenAI's ChatGPT**, were used as development tools throughout the project as described in the AI-Assisted Development section above.
-
----
-
-*Built as an educational sports analytics project. This repository is not affiliated with Newcastle United Football Club.*
+The final presentation covered the project's data analysis, tactical research, squad evaluation, player scouting, and transfer-market decisions.

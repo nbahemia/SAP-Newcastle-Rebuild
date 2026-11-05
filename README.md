@@ -1,720 +1,466 @@
-# SAP Newcastle Rebuild
+# Newcastle United Recruitment Analytics
 
-This project is a data-driven Newcastle United rebuild built around Matthias Jaissle's tactical structure.
+**Translating tactical identity into data-driven squad building**
 
-The goal is not to find the players with the highest generic ratings. The goal is to identify which tactical functions Newcastle need, measure how well the current squad fills those functions, and then find realistic recruitment targets who improve the squad without destroying the balance of the team or the transfer budget.
+A recruitment analytics project built for the Purdue Sports Analytics Club (SAP) Fall 2026 project. Our goal was to rebuild Newcastle United around Matthias Jaissle's tactical system while working within a **$150M starting transfer budget**.
 
-The project combines:
+Rather than just looking for the highest-rated players, we wanted to answer a more specific question:
 
-- historical 2025/26 player data
-- tactical role analysis
-- position-specific percentile comparisons
-- Newcastle-specific role benchmarks
-- league-strength adjustments
-- market-value and age context
-- visualization
-- final manual validation using FotMob and football context
+**Which players actually fit the way we want Newcastle to play, the roles already in the squad, and the areas where the team needs to improve?**
 
-The final decision process is intentionally not fully automated. The code is used to reduce the player pool and identify strong profiles. Visualizations and FotMob checks are then used to validate whether the numbers actually describe the player we think they do.
+The project combines player data, position-specific models, similarity analysis, transfer value, tactical analysis, film, and squad-building decisions to build a realistic Newcastle recruitment plan.
 
 ---
 
-## Project Question
+## Project Overview
 
-The project started with a simple rebuild question:
+Newcastle entered the project after finishing **12th in the 2025/26 Premier League season**. Nine matches into 2026/27, the club sat 13th with a -3 goal difference.
 
-> If Newcastle were rebuilding around Matthias Jaissle, which players should stay, which positions actually need improvement, and which recruitment targets best fit the tactical roles?
+The bigger issue was how the team was performing:
 
-That became a more useful question:
+- 18th in expected goals (xG)
+- 18th in expected goals against (xGA)
+- 18th in possession won in the final third
+- 17th in big chances created
 
-> Does Newcastle have enough players capable of performing each tactical function in Jaissle's system?
+At the same time, Matthias Jaissle had taken over a relatively young squad and brought a clear tactical identity built around:
 
-This matters because two players can share the same listed position while performing completely different jobs.
+- Vertical progression
+- High-intensity gegenpressing
+- Quick attacks after winning possession
+- Fullbacks providing width
+- Wingers attacking inside spaces
+- A compact 4-4-2 defensive press
 
-For example:
+This gave us a starting point for recruitment. Instead of asking who the "best" player at each position was, we could start defining what each position needed to do in this specific team.
 
-- Nico González and a defensive ball-winner may both be listed as defensive midfielders
-- Anthony Elanga and Francisco Conceição may both be right wingers
-- Wissa and Krstović may both play striker
+### Recruitment Priorities
 
-but they do not solve the same tactical problem.
+We identified four main problems:
 
-The analysis therefore focuses on **roles before positions**.
+1. **Chance Creation** — Newcastle needed more creators from both central and wide areas.
+2. **Progressive Width** — the fullbacks needed to provide progression and attacking output in possession.
+3. **High Press** — recruitment needed to support the intensity of Jaissle's system.
+4. **Squad Depth** — several important players had no stylistically similar replacement behind them.
+
+Nico González and Lewis Hall were two of the clearest examples of the last problem. Both were important to the structure of the team, but replacing either one changed how Newcastle had to play.
 
 ---
 
-# Current Tactical Model
+## Analytical Approach
 
-The working structure is a fluid **4-2-3-1**.
-
-The main tactical ideas are:
-
-- a controlling No. 6 organizing first-phase possession
-- a physical/mobile No. 8 supporting pressure and transitions
-- aggressive fullbacks creating width
-- a creative No. 10 connecting midfield and attack
-- wingers providing different forms of threat rather than identical profiles
-- a striker capable of occupying centre-backs and creating a central reference point
-- a 4-4-2 defensive shape when the No. 10 joins the striker in the first pressing line
-
-The final projected XI currently used for the rebuild is:
+The basic idea behind the project was:
 
 ```text
-                    Krstović
-
-Yıldız             Samardžić             Conceição
-
-              Nico González     Joelinton
-
-Lewis Hall       Botman         Schär          Dedić
-
-                    Horníček
+Football Problem
+      ↓
+Define Tactical Roles
+      ↓
+European Player Data
+      ↓
+Per-90 Metrics & Positional Percentiles
+      ↓
+Role Fit / Jaissle Fit Models
+      ↓
+Player Similarity / KNN
+      ↓
+Age, Value & Squad Constraints
+      ↓
+Film + Tactical Validation
+      ↓
+Recruitment Decision
 ```
 
-Important depth and development pieces include:
+The models were meant to **reduce the search space**, while our Sports Analytics group made the final decisions as we negotiated prices with the board members of the club.
 
-- Leopold Querfeld — competitive CB rotation and succession option
-- Filip Lissah — developmental CB/RB
-- Malick Thiaw — high-level CB rotation / starter-quality depth
-- Lewis Miley — midfield progression and controller depth
-- Jacob Ramsey — CM/CAM rotation
-- Rayan Aït-Nouri — attacking LB option
-- Anthony Elanga — transition-focused RW
-- Matías Fernández-Pardo — LW/RW/ST flexibility
-- Bazoumana Touré — developmental LW
-- Wissa / Osula — striker depth with different profiles
+To remphasize, a player ranking highly gave us a reason to investigate them, but did not automatically mean we wanted to sign them because we factored in squad building based off of age, tactical system the player was coming from and how it would translate, and league strength of their league. Furthermore, I researched the player after data analysis, looking at price, contract status and expiry, current fotmob profile for 26/27, and film review to decide between players.
 
 ---
 
-# Methodology
+## Data & Player Profiling
 
-## 1. Tactical Analysis First
+The pipeline takes player-match data and turns it into comparable player profiles.
 
-The project did not begin by sorting a player database.
-
-The first step was understanding how Jaissle's team was functioning.
-
-This was developed through:
-
-- Newcastle squad analysis
-- watching Newcastle season and tactical breakdowns
-- looking at Jaissle's personnel usage
-- identifying recurring responsibilities by position
-- comparing those observations against player-level data
-- using AI-assisted code and documentation to organize and test the analysis
-
-From that, the squad was split into functional roles such as:
-
-- Sweeper / Build-Up GK
-- High-Line CB
-- Left WB / FB
-- Right WB / FB
-- Holding Controller
-- Advanced / Workhorse 8
-- Creative 10
-- Wide Creator
-- Vertical / Box Winger
-- Hybrid Winger
-- Focal Striker
-
-This role map became the base of the recruitment model.
-
----
-
-## 2. Historical Data Pipeline
-
-The active pipeline uses **2025/26 historical European player data** rather than the earlier StatsBomb World Cup proof-of-concept.
-
-The current workflow is:
+The general workflow is:
 
 ```text
-BSD historical data
+Raw Player-Match Data
         ↓
-season-level player metrics
+Clean & Standardize
         ↓
-per-90 metrics
+Aggregate Match Data
         ↓
-position / role context
+Calculate Per-90 Metrics
         ↓
-percentiles
+Position Classification
         ↓
-Transfermarkt enrichment
+Position-Specific Percentiles
         ↓
-Newcastle role benchmarks
+Role-Specific Metrics
         ↓
-recruitment scoring
-        ↓
-shortlists
-        ↓
-visualizations
-        ↓
-manual FotMob validation
-        ↓
-final recruitment decision
+Recruitment Models
 ```
 
-The main historical files are built around:
+Players are primarily compared against others who play similar positions. This helps avoid comparisons where a player looks statistically strong simply because their role gives them more opportunities to accumulate a certain action.
 
-- season totals
-- per-90 production
-- positional context
-- percentiles
-- age
-- club
-- league
-- Transfermarkt value
+Per-90 statistics are calculated from aggregate minutes and actions rather than averaging individual match per-90 values.
 
-The current Europe-wide pool contains thousands of player-season rows, allowing comparisons against a much larger sample than the original tournament dataset.
+We then use league-wide percentiles to put different metrics onto a common scale.
 
 ---
 
-## 3. Per-90 Metrics
+## Modeling Tactical Roles
 
-Raw totals are converted into per-90 values using:
+A major part of the project was moving away from one generic player rating.
+
+A striker, progressive fullback, high-line center back, holding midfielder, and creative winger are being asked to solve completely different problems. Even two players at the same listed position may have very different responsibilities.
+
+We therefore created **position and role-specific models**.
+
+### Role Fit
+
+Role Fit measures how well a player's statistical profile matches the responsibilities we defined for a specific role.
+
+The metrics and weights change depending on the position.
+
+For example, the striker model used in our final recruitment analysis was:
+
+- **30%** Focal-Striker Fit
+- **25%** Box Threat
+- **20%** Focal Presence
+- **15%** Pressing Activity
+- **10%** Link Play
+
+This allowed us to look for a striker who fit what Newcastle needed rather than simply ranking every striker by goals.
+
+### Jaissle Fit
+
+We also built broader Jaissle Fit scores around characteristics that repeatedly appeared in his tactical setup.
+
+Depending on the position, these included areas such as:
+
+- Pressing and defensive activity
+- Progression
+- Ball security
+- Creation
+- Physical involvement
+- Verticality
+- Recovery activity
+
+Role Fit and Jaissle Fit were used together. A player could be good at their position without necessarily being the type of player we wanted for Newcastle.
+
+### K-Nearest Neighbors
+
+For some squad problems, we were not looking for a new starter. We wanted someone who could replace an important player **without forcing the team to change its structure**.
+
+For those cases, we used K-Nearest Neighbors (KNN) and statistical similarity.
+
+The clearest example was finding a backup for Nico González.
+
+Instead of searching for the highest-rated defensive midfielder, we searched for players who behaved similarly across the dimensions that made Nico important to Newcastle's buildup and transition structure while also stressing defensive production.
+
+---
+
+## From Model to Recruitment
+
+One of the benefits of building the models was being able to search a much larger player pool before narrowing the results manually.
+
+### Exploring the Market
+
+The visualization below shows one example from the attacking-midfield search. Players were evaluated using both their position-specific performance and their fit within the tactical model.
+
+![Creative 10 / CAM recruitment market](docs/images/cam_market_top40.png)
+
+These searches gave us a shortlist. From there, we could look more closely at individual profiles, heatmaps, tactical usage, age, physical profile, squad role, and expected transfer cost on FotMob.
+
+That second step mattered because a one-year wonder could pollute our set, or a player who was operating on a highly efficient team having over-inflated stats because of the dominance of the team.
+
+Again, the highest statistical score was not always the player we wanted to sign whether it was due to recent transfer situations, squad age grouping, or other factors.
+
+---
+
+## Example: Nikola Krstović
+
+![Nikola Krstović striker model](docs/images/striker_shortlist_krstovic.png)
+
+Striker was one of the biggest holes in the squad.
+
+Our focal-striker model rated **Nikola Krstović at 62.58**, around 14 points above the existing Newcastle benchmark.
+
+The model liked his combination of:
+
+- Shot volume
+- Goal threat
+- Focal presence
+- Box activity
+- Pressing contribution
+
+But the actual reason we wanted him went beyond the score as Newcastle needed a real starting No. 9. Adding Krstović also meant Yoane Wissa could be used more naturally as a second striker/10 rather than being forced to lead the line, while William Osula could remain a depth and development option.
+
+**Decision:** Sign Krstović for **$33M** as the starting striker.
+
+---
+
+## Example: Darko Nejašmić
+
+![Nico González KNN comparison](docs/images/nico_gonzalez_knn_plus_defense.png)
+
+This was a different type of recruitment problem.
+
+We were not trying to replace Nico González. We wanted a low-cost player who could back him up without completely changing Newcastle's midfield structure.
+
+The KNN model identified **Darko Nejašmić** as one of the closest realistic options.
+
+He recorded a **72.24 Nico Similarity Index**, including:
+
+- **99.5% similarity** — Deep Involvement
+- **94.8% similarity** — Transition Protection
+- **83.2% similarity** — Possession Security
+
+He also offered more defensive activity, including 6.68 recoveries and 1.76 tackles per 90.
+
+That made him useful for two reasons. He could preserve much of Nico's controller profile when Nico was unavailable, while also giving us a slightly more defensive option when protecting transitions or closing out matches.
+
+At only **$3M**, we thought that was a useful squad role without spending starter-level money on a backup.
+
+**Decision:** Sign Nejašmić for **$3M** as the backup holding midfielder/controller.
+
+---
+
+## Example: Rayan Aït-Nouri
+
+![Rayan Aït-Nouri left-back model](docs/images/leftback_shortlist_ait_nouri.png)
+
+Aït-Nouri is a good example of why we did not treat recruitment as simply finding an "upgrade."
+
+Lewis Hall was already one of Newcastle's most important progressive players. We did not need to replace him.
+
+The problem was that there was very little first-team depth behind him.
+
+Aït-Nouri gave us something slightly different:
+
+- More aggressive attacking profile
+- Strong progression
+- More creation from the fullback position
+- Ability to play as a LB or LWB
+- Strong fit with the width required from Jaissle's fullbacks
+
+That gives Newcastle different ways to set up the left side depending on the opponent.
+
+Hall can remain the more balanced option. Aït-Nouri can be used when we want the left back to take on a larger attacking role. Dan Burn can still provide the more defensive alternative.
+
+**Decision:** Sign Aït-Nouri for **$32.5M** as rotation/competition for Hall rather than as his replacement.
+
+---
+
+## Other Recruitment Analysis
+
+The same process was applied across the squad.
+
+### Attacking Midfield
+
+![CAM shortlist](docs/images/cam_shortlist_samardzic_conceicao.png)
+
+### Center Back
+
+![Center-back shortlist](docs/images/centerback_shortlist_nwaiwu.png)
+
+### Winger
+
+![Winger shortlist](docs/images/winger_shortlist_yildiz_conceicao.png)
+
+Each search used different role requirements rather than applying the same rating system to every position.
+
+---
+
+## Final Rebuild
+
+### Outgoing — +$113.5M
+
+| Player | Position | Fee | Reason |
+|---|---|---:|---|
+| Tino Livramento | LB/RB | $50M | High resale value and availability concerns |
+| Joe Willock | CAM | $15M | Limited fit within the planned midfield structure |
+| Harvey Barnes | LW | $37.5M | High sale value and opportunity to reshape the wing |
+| Jacob Murphy | RW | $11M | Opportunity to add more right-side creation |
+
+### Incoming — $224M
+
+| Player | Position | Fee | Planned Role |
+|---|---|---:|---|
+| Kenan Yıldız | LW/CAM | $90M | Elite attacking profile / long-term centerpiece |
+| Nikola Krstović | ST | $33M | Starting focal striker |
+| Rayan Aït-Nouri | LB/LWB | $32.5M | Attacking LB / competition for Hall |
+| Lazar Samardžić | CAM | $20M | Central creativity and progression |
+| Leopold Querfeld | RCB | $18M | Young CB with progression and aerial ability |
+| Bart van Rooij | RB | $13M | Balanced two-way fullback |
+| Danilov Kirill Igorevich | LCB | $7.5M | Development CB |
+| Ludovic Blas | RW/CAM | $6M | Low-cost creative bridge signing |
+| Darko Nejašmić | CDM | $3M | Nico-style controller depth |
+| Filip Lissah | RB/RCB | $1M | Young defensive depth |
+
+### Final Budget
 
 ```text
-per90 = total actions / total minutes × 90
+Starting Budget          $150.0M
+Player Sales            +$113.5M
+Available Funds          $263.5M
+Incoming Transfers      -$224.0M
+--------------------------------
+Remaining Budget          $39.5M
 ```
 
-This is preferred over averaging match-level per-90 values because very short substitute appearances can otherwise have too much influence.
+We intentionally did **not** spend the remaining $39.5M just because it was available.
 
-Minimum-minute thresholds are used in different recruitment searches to reduce extreme small-sample results.
+By that point, knowing that we started with the 4th youngest squad in the Premier League according to Transfermarkt, we felt the squad with the new signing fulfilled a combination of:
 
-The exact threshold depends on the role and purpose of the shortlist.
+- Prime-age starters
+- Bridge players
+- Young development players
+- Better stylistic depth
+- Different tactical options within the same overall system
 
-For example, developmental searches can allow lower minutes than searches for immediate starters.
 
----
-
-## 4. Position and Role Context
-
-Players are not compared across the entire dataset.
-
-Metrics are interpreted relative to role and positional responsibility.
-
-A centre-back should not be rewarded or penalized using the same attacking expectations as a winger, and a controller should not be evaluated like a traditional ball-winning defensive midfielder.
-
-The project therefore uses:
-
-- position filters
-- role-specific metric groups
-- role-specific scoring
-- Newcastle-specific benchmark players
-
-The benchmark player is chosen intentionally.
-
-A depth chart is useful for presentation, but it does not automatically determine who represents the tactical role in the model.
-
-For example:
-
-- Dedić is the right-back benchmark
-- Nico González is the starting controller in the current tactical interpretation
-- Joelinton is the physical/mobile central midfielder benchmark
-- Newcastle's winger comparisons depend on the type of wide role being evaluated
-
-This prevents stale squad ordering from becoming a statistical assumption.
+Spending more money only made sense if it produced a meaningful upgrade, and according to the board members of the club for the general competition we would receive more points for efficiency of transfer spending.
 
 ---
 
-## 5. Building the Role Weights
+## Technical Pipeline
 
-The role weights were not chosen by simply giving every available statistic equal value.
-
-The process was:
-
-1. identify what the role is expected to do tactically
-2. identify which available metrics best represent those responsibilities
-3. group related metrics into broader football concepts
-4. compare the results against players whose style is already understood
-5. adjust the weighting when the model produced rankings that did not make football sense
-
-Examples of broader components include:
-
-- progression
-- creation
-- goal threat
-- 1v1 ability
-- defensive activity
-- aerial ability
-- physical / high-line suitability
-- pressing
-- link play
-- box threat
-
-This was important because one of the biggest findings from the project was that a model can be mathematically consistent and still be wrong for the football question.
-
-A high role score is therefore treated as:
-
-> evidence that a player fits the statistical profile
-
-not:
-
-> proof that the player is definitely better.
-
----
-
-## 6. Tactical Quality vs Recruitment Suitability
-
-The project separates **football quality / role fit** from **recruitment suitability**.
-
-A player can score highly in a role but still be a poor Newcastle target because:
-
-- the current Newcastle player is already strong
-- the player comes from a much weaker competitive environment
-- the transfer fee is unrealistic
-- the player is too old for the intended squad cycle
-- the player recently transferred and is not realistically available
-
-The recruitment suitability model developed into:
-
-- **45% tactical quality**
-- **25% improvement over Newcastle's current option**
-- **25% league strength**
-- **5% age / development**
-
-An additional absolute-upgrade adjustment is used so a tiny numerical improvement does not look elite simply because it ranks highly within a weak candidate pool.
-
-This was especially important when comparing positions where Newcastle already had strong starters.
-
----
-
-## 7. League Strength
-
-League strength became a major part of the model after early rankings over-rewarded strong statistical production from weaker leagues.
-
-The current model gives meaningful weight to the competitive environment.
-
-The scale is anchored with the Premier League at the top and then reduced across other leagues.
-
-Example working values included:
-
-- Premier League — 100
-- Serie A — 88.9
-- La Liga — 82.9
-- Bundesliga — 80.0
-- Ligue 1 — 72.9
-- Primeira Liga — 70.0
-- Championship — 67.0
-- Eredivisie — 63.4
-- Belgian Pro League — 63.0
-- Turkish Süper Lig — 61.0
-- Austrian Bundesliga — 58.0
-- Scottish Premiership — 56.0
-- Danish Superliga — 54.0
-
-These values are not intended to be a universal ranking of world football.
-
-They are a practical adjustment for this recruitment model.
-
-The purpose is to avoid treating the same percentile production as equally proven in every competition.
-
----
-
-## 8. Value Is Kept Separate
-
-Transfer value is not heavily embedded inside the football-quality score.
-
-This was intentional.
-
-If value is mixed too strongly into the football score, a cheap average player can appear better than an expensive elite player simply because he is inexpensive.
-
-Instead, the project separates:
-
-### Recruitment Suitability
-
-- Tactical quality — 45%
-- Newcastle upgrade — 25%
-- League strength — 25%
-- Age — 5%
-
-### Value Score
-
-- Suitability — 45%
-- Affordability — 25%
-- Age / development — 15%
-- Upgrade — 15%
-
-That allows two different questions:
-
-> Who is the best player for Newcastle?
-
-and
-
-> Who is the best value for Newcastle?
-
-Those are not always the same answer.
-
----
-
-# Player Metrics
-
-The exact metrics vary by role.
-
-The broader metric pool includes:
-
-### Passing / Progression
-
-- successful passes
-- pass completion
-- line-breaking passes
-- progressive passes
-- passes into the final third
-- accurate long balls
-- long-ball accuracy
-- chances created
-- xA
-
-### Carrying / 1v1
-
-- successful dribbles
-- dribble success
-- progressive carries
-- carries into the final third
-- touches
-- penalty-area touches
-- dispossessions
-
-### Attacking
-
-- goals
-- xG
-- non-penalty xG
-- xGOT
-- shots
-- shots on target
-- headed shots
-- big chances
-- box touches
-
-### Defending
-
-- tackles
-- interceptions
-- recoveries
-- final-third recoveries / wins
-- clearances
-- blocked shots
-- defensive contributions
-- duels won
-- duel win percentage
-- aerials won
-- aerial win percentage
-- times dribbled past
-
-The model does not force every role to use every metric.
-
----
-
-# Visual Analysis
-
-The code outputs are then converted into visual comparisons.
-
-The visualization stage is used to:
-
-- compare targets against Newcastle players
-- identify where a target's score is actually coming from
-- detect one-metric outliers
-- compare different player archetypes
-- see whether the final shortlist has enough tactical variety
-- communicate the findings more clearly than a large CSV
-
-The repository keeps a single root `visualizations/` tree for these outputs.
-
-The visual stage is not just presentation.
-
-It is part of the analysis.
-
-A target that looks strong in one composite score can look much less convincing once the individual components are placed next to the current Newcastle player.
-
----
-
-# Manual FotMob Validation
-
-The final stage is manual.
-
-Once the code reduces the pool, the best candidates are checked against FotMob.
-
-This became necessary because several issues appeared during development:
-
-- some missing metrics were being represented as zero
-- some players appeared multiple times because of cross-file identity issues
-- minute totals did not always match between generated outputs
-- role scores could over-reward a player because of the comparison pool
-- league strength could materially change how convincing a percentile looked
-- a player's statistical score did not always describe the type of player Newcastle actually needed
-
-FotMob is therefore used to check:
-
-- minutes
-- per-90 output
-- percentile profile
-- actual position
-- role
-- defensive workload
-- passing style
-- progression
-- attacking involvement
-- aerial ability
-- duel efficiency
-- current club context
-
-The final shortlist is **code-informed, not code-decided**.
-
----
-
-# Example: Centre-Back Search
-
-The centre-back search became the clearest example of why the final manual stage matters.
-
-An early model could rank players highly even when key build-up statistics were missing.
-
-After auditing the pipeline, the CB evaluation emphasized:
-
-- progression / build-up
-- front-foot defending
-- duel strength
-- aerial strength
-- mobility for a higher line
-- league strength
-- age / upside
-
-The final football judgment then compared the actual profiles.
-
-### Leopold Querfeld
-
-The FotMob check showed:
-
-- 7.89 line-breaking passes / 90
-- 4.49 accurate long balls / 90
-- 7.02 duels won / 90
-- 60.3% duel win rate
-- 4.26 aerial wins / 90
-- 64.6% aerial win rate
-- 1.20 interceptions / 90
-- 7.32 clearances / 90
-
-This showed a much more complete profile than the model score alone communicated.
-
-Querfeld became the preferred succession CB because he combined:
-
-- physical defending
-- aerial dominance
-- progressive passing
-- Bundesliga experience
-- age
-- realistic cost
-
-Filip Lissah remains a lower-cost developmental CB/RB option rather than the same type of signing.
-
----
-
-# Example: Right-Wing Search
-
-The right-wing search also moved away from forcing one archetype.
-
-Newcastle already had verticality through Anthony Elanga.
-
-The goal therefore became finding a winger who could add:
-
-- 1v1 quality
-- creation
-- box involvement
-- goal threat
-- technical quality
-
-rather than simply finding another fast transition runner.
-
-Francisco Conceição emerged as a strong fit because his historical profile included:
-
-- strong dribbling volume
-- high shot volume
-- good box involvement
-- secondary creation
-- line-breaking involvement
-- pressing contribution
-
-The final choice was therefore based on **squad balance**, not just his individual winger score.
-
----
-
-# Current Recruitment Direction
-
-The rebuild eventually moved toward:
-
-### Incoming
-
-- Nikola Krstović
-- Kenan Yıldız
-- Lazar Samardžić
-- Rayan Aït-Nouri
-- Bart van Rooij
-- Francisco Conceição
-- Leopold Querfeld
-
-### Development / Depth
-
-- Filip Lissah as a developmental CB/RB option
-
-### Outgoing
-
-- Tino Livramento
-- Harvey Barnes
-- Jacob Murphy
-- Joe Willock
-
-Jacob Ramsey was retained because his CM/CAM flexibility still provides useful squad depth.
-
-The rebuild does not need to spend every available euro.
-
-After the current planned moves, the remaining budget can be kept for future windows or opportunistic transfers.
-
----
-
-# Main Findings
-
-## 1. Tactical role matters more than listed position
-
-The most important methodological change was moving from positional depth to functional depth.
-
----
-
-## 2. Composite scores need context
-
-A score is useful for reducing the player pool.
-
-It should not replace checking the underlying metrics.
-
----
-
-## 3. Missing data must remain missing
-
-Missing values should not automatically become zero.
-
-This was one of the most important technical lessons from the CB/RW audit.
-
----
-
-## 4. League strength matters
-
-Percentile performance is not equally transferable from every competition.
-
----
-
-## 5. Newcastle's existing starter matters
-
-Recruitment should measure improvement over the actual Newcastle benchmark, not just rank targets against each other.
-
----
-
-## 6. Value and quality are different questions
-
-The best bargain and the best player are not automatically the same player.
-
----
-
-## 7. Squad balance matters
-
-The final winger decision is a good example.
-
-Newcastle did not need another version of Elanga.
-
-The squad needed a different form of right-sided threat.
-
----
-
-## 8. Manual review remains necessary
-
-The final process is:
-
-> **code → visualization → FotMob → football decision**
-
-That is the intended methodology of the project.
-
----
-
-# Repository Structure
+The repository is organized around a reproducible BSD recruitment pipeline.
 
 ```text
-SAP-Newcastle-Rebuild/
-├── data/
-│   ├── external/
-│   │   └── transfermarkt/
-│   ├── raw/
-│   │   └── bsd/
-│   └── processed/
-│       └── bsd/
-│           ├── europe_2025_26_player_season_metrics.parquet
-│           ├── europe_2025_26_player_percentiles.parquet
-│           ├── europe_2025_26_player_percentiles_enriched.parquet
-│           └── shortlist/
-├── scripts/
-│   └── bsd/
-│       ├── extract/
-│       ├── transform/
-│       └── analyze/
-├── visualizations/
-├── reports/
-├── README.md
-├── Role_Analysis.md
-└── requirements.txt
+scripts/bsd/
+│
+├── extract/
+│   └── Data extraction and cache building
+│
+├── transform/
+│   ├── Player-season metrics
+│   ├── Position classification
+│   ├── Percentiles
+│   ├── Role scores
+│   └── Transfer-market enrichment
+│
+├── analyze/
+│   ├── European recruitment searches
+│   ├── Newcastle squad analysis
+│   └── role_scouting/
+│       ├── Position-specific models
+│       ├── Historical benchmarks
+│       ├── Squad-depth analysis
+│       └── Final shortlist analysis
+│
+└── visualize/
+    ├── Recruitment plots
+    ├── Role-model visualizations
+    └── KNN / similarity visualizations
 ```
+
+The canonical European recruitment rebuild follows:
+
+```text
+European Data Extraction
+        ↓
+Offline Player Pool
+        ↓
+Transfer-Market Enrichment
+        ↓
+European Shortlist
+        ↓
+Jaissle Recruitment Pipeline
+        ↓
+Final Recruitment Outputs
+```
+
+The master rebuild script is:
+
+```bash
+python scripts/bsd/transform/rebuild_europe_recruitment_pipeline.py
+```
+
+Individual role and recruitment scripts can also be run separately when testing or updating a specific part of the analysis.
 
 ---
 
-# Main Scripts
+## AI-Assisted Development
 
-### Build the European historical pool
+This project used generative AI extensively during software development.
 
-```powershell
-python .\scripts\bsd\extract\build_europe_2025_2026_pool.py
-```
+I want to be clear about that because I do not want to present the repository as if I manually wrote every line of Python myself.
 
-### Rebuild the recruitment pipeline
+My work was primarily on the **football and analytical side of the project**. I defined what we were trying to measure, translated our tactical ideas into player roles and model requirements, decided which metrics and constraints were useful, evaluated the outputs, watched film and reviewed player usage, and made recruitment decisions based on the combination of the data and football context.
 
-```powershell
-python .\scripts\bsd\transform\rebuild_europe_recruitment_pipeline.py
-```
+AI was used to help turn those ideas into working code, including:
 
-### Analyze Newcastle's current squad
+- Building and restructuring Python scripts
+- Implementing data-processing logic
+- Debugging
+- Developing and iterating on role-scoring models
+- Implementing KNN and similarity analysis
+- Producing visualizations
+- Refactoring and organizing the final pipeline
 
-```powershell
-python .\scripts\bsd\analyze\analyze_newcastle_squad.py
-```
+The process was iterative. When a model returned players that did not make sense for the role we were trying to fill, I went back through the metrics, weights, filters, player data, and football reasoning and adjusted the methodology.
 
-### Run the Jaissle recruitment role pipeline
+For that reason, I view the code as the **implementation of the analysis**, rather than the main point of the project.
 
-```powershell
-python .\scripts\bsd\analyze\role_scouting\run_jaissle_recruitment_pipeline.py
-```
+The main goal was learning how to take a football question, turn it into something measurable, use data to search a large player pool, and then know when the numbers needed more context.
 
-### Generate the final CB / RW focus
-
-```powershell
-python .\scripts\bsd\analyze\find_final_cb_rw_targets.py
-```
-
-### Generate final visual comparisons
-
-```powershell
-python .\scripts\bsd\analyze\plot_final_shortlist_vs_position.py
-```
+**README disclosure:** This README was also drafted with the assistance of OpenAI's ChatGPT using our final SAP presentation, project methodology, repository structure, visualizations, and my explanations of the project. I reviewed and directed the final content so that it reflects how the project was actually completed.
 
 ---
 
-# Limitations
+## Limitations
 
-The model still has limitations.
+This is a recruitment model, not a replacement for scouting.
 
-- event-provider metrics do not capture every tactical action
-- positional labels can still be imperfect
-- player roles change between clubs
-- league-strength weights are model assumptions
-- market values are not guaranteed transfer fees
-- injuries and availability can change the practical value of a target
-- percentile scores depend on the comparison pool
-- some metrics require manual validation when source coverage is incomplete
-- the current model does not fully estimate tactical chemistry or adaptation risk
+Some important limitations are:
 
-Because of this, the final recruitment board should never be read as an automatic transfer recommendation.
+- **Role weights are subjective.** They represent our interpretation of what matters within Jaissle's system.
+- **Percentiles depend on the comparison group.** A player's ranking can change depending on league, position classification, minutes threshold, and available data.
+- **Statistical similarity is not tactical identity.** Two players can produce similar numbers in very different systems.
+- **League context matters.** Performance does not transfer perfectly between competitions.
+- **Transfer values are estimates.** A modeled or public market value is not necessarily the price a club would actually accept.
+- **Physical and off-ball behavior can be difficult to capture completely in event data.**
+- **KNN finds statistical similarity, not guaranteed replacement quality.**
+- **Film still matters.** Heatmaps, tactical usage, movement, role, and squad context were used to validate players before making final decisions.
 
-It is a structured way to get from thousands of players to a small group worth seriously analyzing.
+The model was most useful as a way to narrow thousands of possible players into a smaller group that was worth investigating.
+
+---
+
+## Improvements to Look At
+
+- The model needed more data cleaning. There were multiple cases of NaN footballing statistics that needed filling which directly impacted role score. This was in part due to the sourcing of the football data needing to be free and accessible with request limits. This is most likely why there was a highest Jaissle role fit score of ~70.0-80.0. 
+
+---
+
+## Team
+
+Developed for the **Purdue Sports Analytics Club — Fall 2026 Project**.
+
+**Project Team**
+
+- Naeem Bahemia
+- Naitik Rambhia
+- Sunay Konnur
+- Braden Parker
+- Andrew Morin
+
+**Coding and Project Completion**
+ - Mainly me (Naeem Bahemia)
+
+The final project combined data analysis, tactical research, squad evaluation, player scouting, and transfer-market decision making.
+
+---
+
+## Acknowledgments
+
+This project uses third-party football and market data for educational and analytical purposes. Player statistics, valuations, and other external information remain the property of their respective data providers.
+
+Generative AI tools, including **OpenAI's ChatGPT**, were used as development tools throughout the project as described in the AI-Assisted Development section above.
+
+---
+
+*Built as an educational sports analytics project. This repository is not affiliated with Newcastle United Football Club.*

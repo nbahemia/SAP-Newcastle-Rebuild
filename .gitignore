@@ -147,3 +147,6 @@ dist/
 # Maintenance
 #------------------------------------------------------------
 scripts/maintenance/
+
+# Generated scouting visualizations
+data/processed/bsd/shortlist/images/

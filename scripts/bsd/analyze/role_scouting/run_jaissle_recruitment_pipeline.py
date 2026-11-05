@@ -63,10 +63,10 @@ FINAL_ANALYSIS_CANDIDATES = [
     ANALYZE_DIR / "build_final_shortlist_analysis.py",
 ]
 
-IMAGE_CREATION = ANALYZE_DIR / "run_jaissle_image_creation.py"
+IMAGE_CREATION = ROOT / "scripts" / "bsd" / "visualize" / "generate_jaissle_visualizations.py"
 
 SHORTLIST_VIS_CANDIDATES = [
-    ANALYZE_DIR / "plot_final_shortlist_vs_position.py",
+    ROOT / "scripts" / "bsd" / "visualize" / "plot_final_shortlist_vs_position.py",
     ROLE_DIR / "plot_final_shortlist_vs_position.py",
 ]
 
@@ -195,7 +195,7 @@ def main():
         )
     else:
         print(
-            "[warn] run_jaissle_image_creation.py not found"
+            "[warn] generate_jaissle_visualizations.py not found"
         )
 
     # 5. Guaranteed shortlist-vs-position market charts.

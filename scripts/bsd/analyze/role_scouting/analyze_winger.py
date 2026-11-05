@@ -1,49 +1,41 @@
 from __future__ import annotations
-
 import re
 import unicodedata
 from pathlib import Path
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
-
-# =============================================================================
-# PATHS
-# =============================================================================
-
+# =============================================================================# PATHS# =============================================================================
 ROOT = Path(__file__).resolve().parents[4]
-
 FULL_SHORTLIST = (
     ROOT / "data" / "processed" / "bsd" / "shortlist"
     / "europe_2025_26_full_role_shortlist.parquet"
 )
-
 HISTORICAL_METRICS = (
     ROOT / "data" / "processed" / "bsd"
     / "europe_2025_26_player_season_metrics.parquet"
 )
-
 OUT_DIR = ROOT / "data" / "processed" / "bsd" / "shortlist"
 IMAGE_DIR = OUT_DIR / "images"
-
 OUT_CSV = OUT_DIR / "winger_jaissle_archetypes.csv"
 OUT_HTML = OUT_DIR / "winger_jaissle_archetypes.html"
 OUT_CHART = IMAGE_DIR / "winger_jaissle_archetypes_chart.png"
-
 MIN_MINUTES = 450
-
-
-# =============================================================================
-# METRIC ALIASES
-# Optional metrics are used when the historical parquet contains them.
-# The scoring functions automatically re-normalize weights when a metric is
-# unavailable, so the script remains usable with the current BSD history.
-# =============================================================================
-
+MAX_RW_FEE_EUR_M = 56.0
+PREFERRED_RW_FEE_EUR_M = 45.0
+# Market value is a screening proxy, not a confirmed transfer fee.
+RW_RECRUITMENT_WEIGHTS = {
+    "wide_creator_score": 0.42,
+    "hybrid_score": 0.23,
+    "vertical_box_score": 0.12,
+    "progressive_carries_p90": 0.08,
+    "successful_dribbles_p90": 0.06,
+    "possession_won_final_third_p90": 0.05,
+    "recoveries_p90": 0.04,
+}
+# =============================================================================# METRIC ALIASES# Optional metrics are used when the historical parquet contains them.# The scoring functions automatically re-normalize weights when a metric is# unavailable, so the script remains usable with the current BSD history.# =============================================================================
 ALIASES = {
-    # Shooting / box threat
+# Shooting / box threat
     "xg": ["xg_per90", "xg", "expected_goals"],
     "shots": ["shots_per90", "shots", "total_shots_per90", "total_shots"],
     "shots_on_target": [
@@ -56,8 +48,7 @@ ALIASES = {
         "touches_in_opposition_box",
         "box_touches",
     ],
-
-    # Creation / progression
+# Creation / progression
     "xa": ["xa_per90", "xa", "expected_assists"],
     "key_passes": [
         "key_passes_per90", "key_passes", "key_pass"
@@ -89,8 +80,7 @@ ALIASES = {
         "successful_passes_percentage",
     ],
     "touches": ["touches_per90", "touches"],
-
-    # Carrying / 1v1
+# Carrying / 1v1
     "successful_dribbles": [
         "successful_dribbles_per90",
         "successful_dribbles",
@@ -103,8 +93,7 @@ ALIASES = {
         "progressive_ball_carries_count_per90",
         "progressive_ball_carries_count",
     ],
-
-    # Physical / defensive
+# Physical / defensive
     "duels_won": ["duels_won_per90", "duels_won", "duel_won"],
     "fouls_won": [
         "fouls_won_per90", "fouls_won"
@@ -125,8 +114,6 @@ ALIASES = {
         "interceptions_per90", "interceptions", "interception"
     ],
 }
-
-
 NEWCASTLE_BENCHMARK_ALIASES = {
     "Elanga": ["a elanga", "anthony elanga"],
     "Barnes": ["h barnes", "harvey barnes"],
@@ -142,15 +129,7 @@ NEWCASTLE_BENCHMARK_ALIASES = {
         "matias fernández-pardo",
     ],
 }
-
-
-# =============================================================================
-# JAISSLE REFERENCE PROFILES
-# User-supplied FotMob season profiles.
-# These are descriptive anchors only; they are NOT inserted into the
-# league-normalized candidate score.
-# =============================================================================
-
+# =============================================================================# JAISSLE REFERENCE PROFILES# User-supplied FotMob season profiles.# These are descriptive anchors only; they are NOT inserted into the# league-normalized candidate score.# =============================================================================
 JAISSLE_REFERENCES = {
     "Mahrez-type Wide Creator": {
         "minutes": 2311,
@@ -205,12 +184,7 @@ JAISSLE_REFERENCES = {
         ),
     },
 }
-
-
-# =============================================================================
-# ARCHETYPE WEIGHTS
-# =============================================================================
-
+# =============================================================================# ARCHETYPE WEIGHTS# =============================================================================
 WIDE_CREATOR_WEIGHTS = {
     "xa_p90": 0.20,
     "key_passes_p90": 0.18,
@@ -222,7 +196,6 @@ WIDE_CREATOR_WEIGHTS = {
     "touches_p90": 0.05,
     "recoveries_p90": 0.05,
 }
-
 VERTICAL_BOX_WEIGHTS = {
     "xg_p90": 0.18,
     "shots_p90": 0.12,
@@ -235,7 +208,6 @@ VERTICAL_BOX_WEIGHTS = {
     "possession_won_final_third_p90": 0.06,
     "xa_p90": 0.07,
 }
-
 HYBRID_WEIGHTS = {
     "xa_p90": 0.13,
     "key_passes_p90": 0.10,
@@ -251,12 +223,7 @@ HYBRID_WEIGHTS = {
     "duels_won_p90": 0.05,
     "possession_won_final_third_p90": 0.05,
 }
-
-
-# =============================================================================
-# HELPERS
-# =============================================================================
-
+# =============================================================================# HELPERS# =============================================================================
 def norm(value) -> str:
     if value is None or pd.isna(value):
         return ""
@@ -270,8 +237,6 @@ def norm(value) -> str:
         " ",
         value.lower(),
     ).strip()
-
-
 def find_alias(df: pd.DataFrame, aliases: list[str]) -> str | None:
     lookup = {
         re.sub(
@@ -281,7 +246,6 @@ def find_alias(df: pd.DataFrame, aliases: list[str]) -> str | None:
         ).strip("_"): c
         for c in df.columns
     }
-
     for alias in aliases:
         key = re.sub(
             r"[^a-z0-9]+",
@@ -290,14 +254,10 @@ def find_alias(df: pd.DataFrame, aliases: list[str]) -> str | None:
         ).strip("_")
         if key in lookup:
             return lookup[key]
-
     return None
-
-
 def p90(values: pd.Series, minutes: pd.Series) -> pd.Series:
     values = pd.to_numeric(values, errors="coerce")
     minutes = pd.to_numeric(minutes, errors="coerce")
-
     return pd.Series(
         np.where(
             minutes > 0,
@@ -307,44 +267,34 @@ def p90(values: pd.Series, minutes: pd.Series) -> pd.Series:
         index=values.index,
         dtype=float,
     )
-
-
 def winsor_z(series: pd.Series) -> pd.Series:
     s = pd.to_numeric(series, errors="coerce")
     valid = s.dropna()
-
     if len(valid) < 8:
         return pd.Series(
             np.nan,
             index=s.index,
             dtype=float,
         )
-
     lo = valid.quantile(0.05)
     hi = valid.quantile(0.95)
     clipped = s.clip(lo, hi)
-
     sd = clipped.std(ddof=0)
-
     if pd.isna(sd) or sd <= 1e-9:
         return pd.Series(
             0.0,
             index=s.index,
             dtype=float,
         )
-
     return (
         clipped - clipped.mean()
     ) / sd
-
-
 def league_adjusted_z(
     df: pd.DataFrame,
     metric: str,
 ) -> pd.Series:
     """
     Standardize a winger against other winger candidates in the same league.
-
     If a league group is too small, fall back to the full winger pool.
     """
     result = pd.Series(
@@ -352,34 +302,25 @@ def league_adjusted_z(
         index=df.index,
         dtype=float,
     )
-
     if metric not in df.columns:
         return result
-
     global_z = winsor_z(df[metric])
-
     if "league_slug" not in df.columns:
         return global_z
-
     for league, idx in df.groupby(
         "league_slug",
         dropna=False,
     ).groups.items():
         league_idx = list(idx)
-
         if len(league_idx) < 8:
             result.loc[league_idx] = global_z.loc[
                 league_idx
             ]
             continue
-
         result.loc[league_idx] = winsor_z(
             df.loc[league_idx, metric]
         )
-
     return result
-
-
 def score_index(
     df: pd.DataFrame,
     weights: dict[str, float],
@@ -387,7 +328,6 @@ def score_index(
     """
     50 = league-winger average.
     60 ~= one weighted SD above league-winger average.
-
     Returns score and metric coverage.
     """
     weighted = pd.Series(
@@ -398,26 +338,19 @@ def score_index(
         0.0,
         index=df.index,
     )
-
     total_weight = sum(weights.values())
-
     for col, weight in weights.items():
         if col not in df.columns:
             continue
-
         z = league_adjusted_z(
             df,
             col,
         )
-
         valid = z.notna()
-
         weighted.loc[valid] += (
             z.loc[valid] * weight
         )
-
         observed.loc[valid] += weight
-
     normalized = pd.Series(
         np.where(
             observed > 0,
@@ -426,20 +359,15 @@ def score_index(
         ),
         index=df.index,
     )
-
     score = (
         50 + 10 * normalized
     ).clip(20, 80)
-
     coverage = (
         observed / total_weight * 100
         if total_weight > 0
         else 0
     )
-
     return score, coverage
-
-
 def player_key(df: pd.DataFrame) -> pd.Series:
     return (
         df["player_name"]
@@ -449,8 +377,6 @@ def player_key(df: pd.DataFrame) -> pd.Series:
         + df["league_slug"]
         .astype(str)
     )
-
-
 def is_winger(row) -> bool:
     text = " ".join(
         norm(row.get(c, ""))
@@ -460,7 +386,6 @@ def is_winger(row) -> bool:
             "tm_position",
         ]
     )
-
     return any(
         term in text
         for term in [
@@ -472,11 +397,53 @@ def is_winger(row) -> bool:
             "attacking midfield",
         ]
     )
-
-
+def rw_position_class(row) -> str:
+    """Require evidence of RW eligibility; do not infer RW from generic AM."""
+    values = [norm(row.get(c, "")) for c in (
+        "natural_position", "tm_sub_position", "tm_position"
+    )]
+    if any(re.search(r"\b(right winger|right midfield|right wing|rw|rm)\b", v) for v in values):
+        return "Natural RW"
+    if any(re.search(r"\b(winger|wide midfielder)\b", v) for v in values):
+        return "Unverified side"
+    return "Not RW verified"
+def build_rw_ranking(wing: pd.DataFrame) -> pd.DataFrame:
+    wing = wing.copy()
+    wing["rw_position_class"] = wing.apply(rw_position_class, axis=1)
+    wing["rw_eligible"] = wing["rw_position_class"].eq("Natural RW")
+    # Keep all rows for contextual scouting; only RW-verified rows are ranked.
+    numerator = pd.Series(0.0, index=wing.index)
+    denominator = pd.Series(0.0, index=wing.index)
+    for metric, weight in RW_RECRUITMENT_WEIGHTS.items():
+        if metric not in wing.columns:
+            continue
+        values = (
+            pd.to_numeric(wing[metric], errors="coerce")
+            if metric.endswith("_score")
+            else 50 + 10 * league_adjusted_z(wing, metric)
+        )
+        valid = values.notna()
+        numerator.loc[valid] += values.loc[valid] * weight
+        denominator.loc[valid] += weight
+    wing["rw_fit_score"] = (numerator / denominator.where(denominator.gt(0))).clip(20, 80)
+    wing["rw_fit_coverage"] = denominator / sum(RW_RECRUITMENT_WEIGHTS.values()) * 100
+    wing.loc[~wing["rw_eligible"], "rw_fit_score"] = np.nan
+    if "market_value_eur_m" in wing.columns:
+        fee = pd.to_numeric(wing["market_value_eur_m"], errors="coerce")
+    else:
+        fee = pd.Series(np.nan, index=wing.index)
+    wing["rw_budget_status"] = np.select(
+        [fee.isna(), fee.le(PREFERRED_RW_FEE_EUR_M), fee.le(MAX_RW_FEE_EUR_M)],
+        ["Fee unknown", "Preferred range", "Within maximum"],
+        default="Above budget",
+    )
+    wing["rw_priority"] = np.where(
+        wing["rw_eligible"] & fee.le(MAX_RW_FEE_EUR_M),
+        wing["rw_fit_score"], np.nan,
+    )
+    return wing
 def benchmark_label(name: str) -> str | None:
     n = norm(name)
-
     for label, aliases in (
         NEWCASTLE_BENCHMARK_ALIASES.items()
     ):
@@ -488,10 +455,7 @@ def benchmark_label(name: str) -> str | None:
                 or a.startswith(n + " ")
             ):
                 return label
-
     return None
-
-
 def top_with_benchmarks(
     df: pd.DataFrame,
     score_col: str,
@@ -504,28 +468,22 @@ def top_with_benchmarks(
         )
         .head(n)
     )
-
     benches = df[
         df["is_newcastle_benchmark"]
     ].copy()
-
     combined = pd.concat(
         [top, benches],
         ignore_index=False,
     )
-
     combined = combined[
         ~combined.index.duplicated(
             keep="first"
         )
     ]
-
     return combined.sort_values(
         score_col,
         ascending=False,
     )
-
-
 def best_two_archetypes(row: pd.Series):
     values = {
         "Wide Creator": row.get(
@@ -538,13 +496,11 @@ def best_two_archetypes(row: pd.Series):
             "hybrid_score"
         ),
     }
-
     values = {
         key: value
         for key, value in values.items()
         if pd.notna(value)
     }
-
     if not values:
         return (
             pd.NA,
@@ -552,15 +508,12 @@ def best_two_archetypes(row: pd.Series):
             pd.NA,
             np.nan,
         )
-
     ordered = sorted(
         values.items(),
         key=lambda x: x[1],
         reverse=True,
     )
-
     best_name, best_score = ordered[0]
-
     if len(ordered) > 1:
         second_name, second_score = ordered[1]
     else:
@@ -568,15 +521,12 @@ def best_two_archetypes(row: pd.Series):
             pd.NA,
             np.nan,
         )
-
     return (
         best_name,
         best_score,
         second_name,
         second_score,
     )
-
-
 def strongest_dimensions(
     row: pd.Series,
 ) -> str:
@@ -591,66 +541,48 @@ def strongest_dimensions(
             "hybrid_score"
         ),
     }
-
     valid = [
         (name, float(value))
         for name, value in dimensions.items()
         if pd.notna(value)
     ]
-
     if not valid:
         return ""
-
     valid.sort(
         key=lambda x: x[1],
         reverse=True,
     )
-
     return "; ".join(
         f"{name} {value:.1f}"
         for name, value in valid
     )
-
-
-# =============================================================================
-# LOAD / BUILD WINGER POOL
-# =============================================================================
-
+# =============================================================================# LOAD / BUILD WINGER POOL# =============================================================================
 def load_pool() -> pd.DataFrame:
     if not FULL_SHORTLIST.exists():
         raise FileNotFoundError(
             FULL_SHORTLIST
         )
-
     if not HISTORICAL_METRICS.exists():
         raise FileNotFoundError(
             HISTORICAL_METRICS
         )
-
     shortlist = pd.read_parquet(
         FULL_SHORTLIST
     ).copy()
-
     historical = pd.read_parquet(
         HISTORICAL_METRICS
     ).copy()
-
-    # Use any natural winger / wide attacking-midfielder appearing in the
-    # recruitment shortlist, not only players who survived the old
-    # vertical-winger role filter.
+# Use any natural winger / wide attacking-midfielder appearing in the# recruitment shortlist, not only players who survived the old# vertical-winger role filter.
     wing = shortlist[
         shortlist.apply(
             is_winger,
             axis=1,
         )
     ].copy()
-
-    # A player may appear once per role in the long shortlist.
-    # Keep one metadata row per player/league.
+# A player may appear once per role in the long shortlist.# Keep one metadata row per player/league.
     wing["_player_key"] = player_key(
         wing
     )
-
     if "minutes" in wing.columns:
         wing["_sort_minutes"] = pd.to_numeric(
             wing["minutes"],
@@ -658,7 +590,6 @@ def load_pool() -> pd.DataFrame:
         ).fillna(0)
     else:
         wing["_sort_minutes"] = 0
-
     wing = (
         wing.sort_values(
             "_sort_minutes",
@@ -670,11 +601,9 @@ def load_pool() -> pd.DataFrame:
         )
         .copy()
     )
-
     historical["_player_key"] = player_key(
         historical
     )
-
     hist_minutes = (
         pd.to_numeric(
             historical["minutes"],
@@ -686,24 +615,19 @@ def load_pool() -> pd.DataFrame:
             index=historical.index,
         )
     )
-
     source = pd.DataFrame({
         "_player_key": historical[
             "_player_key"
         ],
         "_src_minutes": hist_minutes,
     })
-
     detected = {}
-
     for metric, aliases in ALIASES.items():
         col = find_alias(
             historical,
             aliases,
         )
-
         detected[metric] = col
-
         if col is not None:
             source[
                 f"_src_{metric}"
@@ -711,19 +635,16 @@ def load_pool() -> pd.DataFrame:
                 historical[col],
                 errors="coerce",
             )
-
     source = source.drop_duplicates(
         "_player_key",
         keep="first",
     )
-
     wing = wing.merge(
         source,
         on="_player_key",
         how="left",
     )
-
-    # Require meaningful historical sample.
+# Require meaningful historical sample.
     wing = wing[
         pd.to_numeric(
             wing["_src_minutes"],
@@ -731,38 +652,30 @@ def load_pool() -> pd.DataFrame:
         ).fillna(0)
         >= MIN_MINUTES
     ].copy()
-
     print("=" * 120)
     print(
         "WINGER ARCHETYPE METRIC SOURCES"
     )
     print("=" * 120)
-
     for metric, col in detected.items():
         print(
             f"{metric:<30} "
             f"{col if col else 'MISSING'}"
         )
-
     for metric, source_col in (
         detected.items()
     ):
         out_col = f"{metric}_p90"
-
         if metric == "pass_accuracy":
             out_col = "pass_accuracy"
-
         if source_col is None:
             wing[out_col] = np.nan
             continue
-
         raw = pd.to_numeric(
             wing[f"_src_{metric}"],
             errors="coerce",
         )
-
         source_name = source_col.lower()
-
         if (
             "per90" in source_name
             or metric == "pass_accuracy"
@@ -773,11 +686,7 @@ def load_pool() -> pd.DataFrame:
                 raw,
                 wing["_src_minutes"],
             )
-
-    # -------------------------------------------------------------------------
-    # Archetype scores
-    # -------------------------------------------------------------------------
-
+# -------------------------------------------------------------------------# Archetype scores# -------------------------------------------------------------------------
     (
         wing["wide_creator_score"],
         wing["wide_creator_coverage"],
@@ -785,7 +694,6 @@ def load_pool() -> pd.DataFrame:
         wing,
         WIDE_CREATOR_WEIGHTS,
     )
-
     (
         wing["vertical_box_score"],
         wing["vertical_box_coverage"],
@@ -793,7 +701,6 @@ def load_pool() -> pd.DataFrame:
         wing,
         VERTICAL_BOX_WEIGHTS,
     )
-
     (
         wing["hybrid_score"],
         wing["hybrid_coverage"],
@@ -801,49 +708,41 @@ def load_pool() -> pd.DataFrame:
         wing,
         HYBRID_WEIGHTS,
     )
-
     best = wing.apply(
         best_two_archetypes,
         axis=1,
         result_type="expand",
     )
-
     best.columns = [
         "best_winger_archetype",
         "best_winger_score",
         "second_winger_archetype",
         "second_winger_score",
     ]
-
     wing = pd.concat(
         [wing, best],
         axis=1,
     )
-
     wing["archetype_gap"] = (
         wing["best_winger_score"]
         - wing["second_winger_score"]
     )
-
     wing["benchmark_label"] = (
         wing["player_name"]
         .astype(str)
         .map(benchmark_label)
     )
-
     wing["is_newcastle_benchmark"] = (
         wing["benchmark_label"]
         .notna()
     )
-
     wing["profile_strengths"] = (
         wing.apply(
             strongest_dimensions,
             axis=1,
         )
     )
-
-    # Old role fit is retained only as context.
+# Old role fit is retained only as context.
     if "role_fit" in wing.columns:
         wing["legacy_winger_fit"] = (
             pd.to_numeric(
@@ -851,7 +750,6 @@ def load_pool() -> pd.DataFrame:
                 errors="coerce",
             )
         )
-
     wing = wing.sort_values(
         [
             "best_winger_score",
@@ -860,14 +758,8 @@ def load_pool() -> pd.DataFrame:
         ],
         ascending=False,
     )
-
     return wing
-
-
-# =============================================================================
-# OUTPUTS
-# =============================================================================
-
+# =============================================================================# OUTPUTS# =============================================================================
 def build_chart(
     df: pd.DataFrame,
     top_n: int = 35,
@@ -883,10 +775,8 @@ def build_chart(
         "best_winger_score",
         top_n,
     ).copy()
-
     if chart.empty:
         return
-
     bubble = (
         np.clip(
             chart[
@@ -897,11 +787,9 @@ def build_chart(
         )
         * 13
     )
-
     fig, ax = plt.subplots(
         figsize=(16, 10)
     )
-
     scatter = ax.scatter(
         chart["wide_creator_score"],
         chart["vertical_box_score"],
@@ -911,27 +799,22 @@ def build_chart(
         edgecolors="black",
         linewidths=0.8,
     )
-
     cbar = fig.colorbar(
         scatter,
         ax=ax,
         pad=0.015,
     )
-
     cbar.set_label(
-        "Best archetype score"
+        "Best archetype score (context)"
     )
-
     for _, row in chart.iterrows():
         label = str(
             row["player_name"]
         )
-
         if row[
             "is_newcastle_benchmark"
         ]:
             label += " [NUFC]"
-
         ax.annotate(
             (
                 f"{label}\n"
@@ -946,32 +829,26 @@ def build_chart(
             textcoords="offset points",
             fontsize=7.5,
         )
-
     ax.axvline(
         50,
         linestyle="--",
         linewidth=1,
     )
-
     ax.axhline(
         50,
         linestyle="--",
         linewidth=1,
     )
-
     ax.set_xlabel(
         "Wide Creator Score"
     )
-
     ax.set_ylabel(
         "Vertical / Box Winger Score"
     )
-
     ax.set_title(
-        "Jaissle Winger Archetypes\n"
+        "Jaissle Right-Winger Recruitment\n"
         "Bubble size = Hybrid Score"
     )
-
     fig.text(
         0.01,
         0.025,
@@ -982,56 +859,46 @@ def build_chart(
         ),
         fontsize=8,
     )
-
     IMAGE_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
-
     plt.tight_layout(
         rect=[0, 0.05, 1, 1]
     )
-
     fig.savefig(
         OUT_CHART,
         dpi=240,
         bbox_inches="tight",
     )
-
     plt.close(fig)
-
-
 def reference_html() -> str:
     blocks = []
-
     for name, ref in (
         JAISSLE_REFERENCES.items()
     ):
         blocks.append(
             f"""
-<div class="reference">
-<h3>{name}</h3>
-<p>{ref["description"]}</p>
-<table>
-<tr><th>xG/90</th><th>xA/90</th><th>Shots/90</th><th>Key Passes/90</th><th>Crosses/90</th><th>Passes/90</th><th>Box Touches/90</th><th>Recoveries/90</th></tr>
-<tr>
-<td>{ref.get("xg_per90", "")}</td>
-<td>{ref.get("xa_per90", "")}</td>
-<td>{ref.get("shots_per90", "")}</td>
-<td>{ref.get("key_passes_per90", "")}</td>
-<td>{ref.get("accurate_crosses_per90", "")}</td>
-<td>{ref.get("successful_passes_per90", "")}</td>
-<td>{ref.get("box_touches_per90", "")}</td>
-<td>{ref.get("recoveries_per90", "")}</td>
-</tr>
-</table>
-</div>
+\<div class="reference">
+\<h3>{name}\</h3>
+\<p>{ref["description"]}\</p>
+\<table>
+\<tr>\<th>xG/90\</th>\<th>xA/90\</th>\<th>Shots/90\</th>\<th>Key Passes/90\</th>\<th>Crosses/90\</th>\<th>Passes/90\</th>\<th>Box Touches/90\</th>\<th>Recoveries/90\</th>\</tr>
+\<tr>
+\<td>{ref.get("xg_per90", "")}\</td>
+\<td>{ref.get("xa_per90", "")}\</td>
+\<td>{ref.get("shots_per90", "")}\</td>
+\<td>{ref.get("key_passes_per90", "")}\</td>
+\<td>{ref.get("accurate_crosses_per90", "")}\</td>
+\<td>{ref.get("successful_passes_per90", "")}\</td>
+\<td>{ref.get("box_touches_per90", "")}\</td>
+\<td>{ref.get("recoveries_per90", "")}\</td>
+\</tr>
+\</table>
+\</div>
 """
         )
-
     return "\n".join(blocks)
-
-
 def save_html(
     df: pd.DataFrame,
 ):
@@ -1068,18 +935,15 @@ def save_html(
         "duels_won_p90",
         "market_value_eur_m",
     ]
-
     cols = [
         c for c in cols
         if c in df.columns
     ]
-
     shown = top_with_benchmarks(
         df,
         "best_winger_score",
         100,
     )
-
     table = shown[
         cols
     ].to_html(
@@ -1088,13 +952,12 @@ def save_html(
             f"{x:.2f}"
         ),
     )
-
-    doc = f"""<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Jaissle Winger Archetypes</title>
-<style>
+    doc = f"""\<!doctype html>
+\<html>
+\<head>
+\<meta charset="utf-8">
+\<title>Jaissle Winger Archetypes\</title>
+\<style>
 body {{
     font-family: Arial, sans-serif;
     margin: 28px;
@@ -1123,59 +986,45 @@ td {{
     padding: 7px;
     border-bottom: 1px solid #ddd;
 }}
-</style>
-</head>
-<body>
-
-<h1>Jaissle Winger Archetype Recruitment</h1>
-
-<div class="card">
-<strong>Model change:</strong> wingers are no longer forced into one
-vertical-transition profile.<br><br>
-
-<strong>Wide Creator:</strong> progression and final-ball creation from wide
-areas, inspired by the Mahrez-type profile.<br>
-
-<strong>Vertical / Box Winger:</strong> shooting, box occupation, 1v1/direct
-threat and defensive activity, inspired by the Galeno-type profile.<br>
-
-<strong>Hybrid:</strong> balanced contribution across creation, direct threat
-and counterpress activity.<br><br>
-
+\</style>
+\</head>
+\<body>
+\<h1>Jaissle Winger Archetype Recruitment\</h1>
+\<div class="card">
+\<strong>Model change:\</strong> wingers are no longer forced into one
+vertical-transition profile.\<br>\<br>
+\<strong>Wide Creator:\</strong> progression and final-ball creation from wide
+areas, inspired by the Mahrez-type profile.\<br>
+\<strong>Vertical / Box Winger:\</strong> shooting, box occupation, 1v1/direct
+threat and defensive activity, inspired by the Galeno-type profile.\<br>
+\<strong>Hybrid:\</strong> balanced contribution across creation, direct threat
+and counterpress activity.\<br>\<br>
 Scores are standardized against other winger candidates in the same league.
 50 is approximately league-winger average. The player's highest archetype
 score is used as the primary winger evaluation.
-</div>
-
-<h2>Jaissle Reference Profiles</h2>
+\</div>
+\<h2>Jaissle Reference Profiles\</h2>
 {reference_html()}
-
-<h2>Recruitment / Newcastle Comparison</h2>
+\<h2>Recruitment / Newcastle Comparison\</h2>
 {table}
-
-</body>
-</html>
+\</body>
+\</html>
 """
-
     OUT_HTML.write_text(
         doc,
         encoding="utf-8",
     )
-
-
 def main():
     OUT_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
-
     IMAGE_DIR.mkdir(
         parents=True,
         exist_ok=True,
     )
-
     result = load_pool()
-
+    result = build_rw_ranking(result)
     export_cols = [
         "player_name",
         "club_name",
@@ -1184,6 +1033,12 @@ def main():
         "minutes",
         "benchmark_label",
         "is_newcastle_benchmark",
+        "rw_position_class",
+        "rw_eligible",
+        "rw_fit_score",
+        "rw_fit_coverage",
+        "rw_budget_status",
+        "rw_priority",
         "best_winger_archetype",
         "best_winger_score",
         "second_winger_archetype",
@@ -1221,39 +1076,37 @@ def main():
         "natural_position",
         "tm_sub_position",
     ]
-
     export_cols = [
         c for c in export_cols
         if c in result.columns
     ]
-
     result[
         export_cols
     ].to_csv(
         OUT_CSV,
         index=False,
     )
-
     save_html(
         result
     )
-
     build_chart(
         result
     )
-
     print()
     print("=" * 165)
     print(
-        "TOP JAISSLE WINGER ARCHETYPES + NEWCASTLE BENCHMARKS"
+        "TOP JAISSLE RIGHT-WING TARGETS + NEWCASTLE BENCHMARKS"
     )
     print("=" * 165)
-
     display_cols = [
         "player_name",
         "club_name",
         "age",
         "benchmark_label",
+        "rw_position_class",
+        "rw_fit_score",
+        "rw_fit_coverage",
+        "rw_budget_status",
         "best_winger_archetype",
         "best_winger_score",
         "wide_creator_score",
@@ -1267,24 +1120,27 @@ def main():
         "recoveries_p90",
         "market_value_eur_m",
     ]
-
     display_cols = [
         c for c in display_cols
         if c in result.columns
     ]
-
-    display = top_with_benchmarks(
-        result,
-        "best_winger_score",
-        35,
-    )[display_cols].copy()
-
+    rw_ranked = result[result["rw_eligible"]].copy()
+    rw_ranked = rw_ranked.sort_values(
+        ["rw_priority", "rw_fit_score"],
+        ascending=False,
+        na_position="last",
+    )
+    display = rw_ranked.head(35)[display_cols].copy()
     display = display.rename(
         columns={
             "player_name": "Player",
             "club_name": "Club",
             "age": "Age",
             "benchmark_label": "NUFC",
+            "rw_position_class": "RW Status",
+            "rw_fit_score": "RW Fit",
+            "rw_fit_coverage": "RW Coverage",
+            "rw_budget_status": "Budget",
             "best_winger_archetype": "Best Archetype",
             "best_winger_score": "Best Score",
             "wide_creator_score": "Creator",
@@ -1299,27 +1155,25 @@ def main():
             "market_value_eur_m": "Value €M",
         }
     )
-
     numeric_exceptions = {
         "Player",
         "Club",
         "NUFC",
         "Best Archetype",
+        "RW Status",
+        "Budget",
     }
-
     for col in display.columns:
         if col not in numeric_exceptions:
             display[col] = pd.to_numeric(
                 display[col],
                 errors="coerce",
             ).round(2)
-
     print(
         display.to_string(
             index=False
         )
     )
-
     print()
     print("Reference interpretation:")
     print(
@@ -1331,13 +1185,10 @@ def main():
     print(
         "  Hybrid = balanced winger who can contribute to both phases."
     )
-
     print()
     print("Saved:")
     print(" ", OUT_CSV)
     print(" ", OUT_HTML)
     print(" ", OUT_CHART)
-
-
 if __name__ == "__main__":
     main()

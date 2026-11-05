@@ -158,7 +158,7 @@ STAGES = [
     {
         "label": "Visualization pack",
         "scripts": [
-            ANALYZE_DIR / "run_jaissle_image_creation.py",
+            ROOT / "scripts" / "bsd" / "visualize" / "generate_jaissle_visualizations.py",
         ],
     },
 ]

@@ -102,7 +102,7 @@ data/processed/**/*.csv
 !data/processed/bsd/shortlist/current_transfer_overrides.csv
 !data/processed/bsd/shortlist/final_recruitment_focus/
 !data/processed/bsd/shortlist/final_recruitment_focus/top_10_elite_complete_rw.csv
-!data/processed/bsd/shortlist/final_recruitment_focus/top_20_high_line_succession_cb.csv
+!data/processed/bsd/shortlist/final_recruitment_focus/top_25_high_line_succession_cb.csv
 
 # ------------------------------------------------------------
 # Visualizations

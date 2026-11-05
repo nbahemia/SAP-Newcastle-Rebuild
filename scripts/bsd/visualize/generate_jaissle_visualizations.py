@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-run_jaissle_image_creation.py
+generate_jaissle_visualizations.py
 
 Create a role-based visualization pack for the Jaissle recruitment pipeline.
 
@@ -15,8 +15,8 @@ Shortlisted Newcastle targets are now:
 
 Usage
 -----
-python scripts/bsd/analyze/run_jaissle_image_creation.py
-python scripts/bsd/analyze/run_jaissle_image_creation.py --top-n 40 --price-cap 70
+python scripts/bsd/analyze/generate_jaissle_visualizations.py
+python scripts/bsd/analyze/generate_jaissle_visualizations.py --top-n 40 --price-cap 70
 """
 
 from __future__ import annotations

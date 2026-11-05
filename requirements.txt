@@ -32,3 +32,6 @@ mplsoccer>=1.4
 
 # HTML/report templating used by generated scouting outputs
 Jinja2>=3.1
+
+# Machine learning / similarity models
+scikit-learn>=1.3

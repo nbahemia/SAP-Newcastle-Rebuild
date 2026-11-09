@@ -73,7 +73,7 @@ Recruitment Decision
 
 The models were meant to **reduce the search space**, while our Sports Analytics group made the final decisions as we negotiated prices with the board members of the club.
 
-To remphasize, a player ranking highly gave us a reason to investigate them, but did not automatically mean we wanted to sign them because we factored in squad building based off of age, tactical system the player was coming from and how it would translate, and league strength of their league. Furthermore, I researched the player after data analysis, looking at price, contract status and expiry, current fotmob profile for 26/27, and film review to decide between players.
+To re-emphasize, a player ranking highly gave us a reason to investigate them, but did not automatically mean we wanted to sign them because we factored in squad building based off of age, tactical system the player was coming from and how it would translate, and league strength of their league. Furthermore, I researched the player after data analysis, looking at price, contract status and expiry, current fotmob profile for 26/27, and film review to decide between players.
 
 ---
 

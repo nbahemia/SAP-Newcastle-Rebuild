@@ -138,12 +138,6 @@ STAGES = [
     # DOWNSTREAM ANALYSIS
     # ------------------------------------------------------------------
     {
-        "label": "Metric repair",
-        "scripts": [
-            ROLE_DIR / "repair_metric_outputs.py",
-        ],
-    },
-    {
         "label": "Squad depth",
         "scripts": [
             ROLE_DIR / "build_squad_depth_analysis.py",
